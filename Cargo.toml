@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "backend/api",
+    "backend/worker",
+    "backend/shared",
+]
+resolver = "2"
