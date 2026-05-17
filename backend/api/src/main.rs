@@ -40,7 +40,6 @@ impl FromRef<AppState> for redis::Client {
     }
 }
 
-use axum::http::Request;
 use tower_http::trace::TraceLayer;
 
 #[tokio::main]
@@ -88,7 +87,7 @@ async fn main() {
 
     /* 3. ตั้งค่า CORS (อนุญาตให้ Frontend เข้าถึงได้) */
     let cors = CorsLayer::new()
-        .allow_origin("http://localhost:5174".parse::<HeaderValue>().unwrap())
+        .allow_origin("http://localhost:5173".parse::<HeaderValue>().unwrap())
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
         .allow_headers(Any);
 

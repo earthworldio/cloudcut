@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use redis::AsyncCommands;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::PgPool;
 use std::process::Command;
 use std::time::Duration;
@@ -36,24 +36,76 @@ pub async fn handle_job(
     let job: JobPayload = serde_json::from_str(payload_str)
         .context("Failed to parse job JSON")?;
 
-    match job {
-        JobPayload::ExtractMetadata { asset_id, input_url, idempotency_key } => {
+    let result = match job.clone() {
+        JobPayload::ExtractMetadata { asset_id, input_url, idempotency_key, .. } => {
             handle_extract_metadata(asset_id, input_url, idempotency_key, db, redis, s3).await
         }
-        JobPayload::GenerateProxy { asset_id, input_url, idempotency_key } => {
+        JobPayload::GenerateProxy { asset_id, input_url, idempotency_key, .. } => {
             handle_generate_proxy(asset_id, input_url, idempotency_key, db, s3).await
         }
-        JobPayload::GenerateThumbnails { asset_id, input_url, idempotency_key } => {
+        JobPayload::GenerateThumbnails { asset_id, input_url, idempotency_key, .. } => {
             handle_generate_thumbnails(asset_id, input_url, idempotency_key, db, s3).await
         }
-        JobPayload::RenderExport { project_id, export_id, idempotency_key } => {
+        JobPayload::RenderExport { project_id, export_id, idempotency_key, .. } => {
             crate::export_pipeline::handle_render_export(project_id, export_id, idempotency_key, db, s3).await
         }
         _ => {
             warn!("Unhandled job type");
             Ok(())
         }
+    };
+
+    if let Err(e) = result {
+        error!(error = %e, "Job execution failed, initiating retry logic");
+        handle_retry(job, e.to_string(), redis).await?;
     }
+
+    Ok(())
+}
+
+async fn handle_retry(mut job: JobPayload, error_msg: String, redis: &redis::Client) -> Result<()> {
+    let max_attempts = 4;
+    let current_attempts = match &job {
+        JobPayload::ExtractMetadata { attempts, .. } => *attempts,
+        JobPayload::GenerateProxy { attempts, .. } => *attempts,
+        JobPayload::GenerateThumbnails { attempts, .. } => *attempts,
+        JobPayload::ExtractWaveform { attempts, .. } => *attempts,
+        JobPayload::RenderExport { attempts, .. } => *attempts,
+    };
+
+    if current_attempts < max_attempts {
+        /* Increment attempts */
+        match &mut job {
+            JobPayload::ExtractMetadata { attempts, .. } => *attempts += 1,
+            JobPayload::GenerateProxy { attempts, .. } => *attempts += 1,
+            JobPayload::GenerateThumbnails { attempts, .. } => *attempts += 1,
+            JobPayload::ExtractWaveform { attempts, .. } => *attempts += 1,
+            JobPayload::RenderExport { attempts, .. } => *attempts += 1,
+        }
+
+        /* Calculate delay: 2^attempt * 1s */
+        let delay_secs = 2u64.pow(current_attempts);
+        warn!(attempts = current_attempts + 1, delay = delay_secs, "Retrying job...");
+
+        /* Wait before re-queueing */
+        tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+
+        let mut conn = redis.get_multiplexed_async_connection().await?;
+        let _: () = conn.lpush("queue:video_pipeline", serde_json::to_string(&job)?).await?;
+    } else {
+        /* Move to Dead-Letter Queue (DLQ) */
+        error!(attempts = current_attempts, "Job failed after max attempts. Moving to DLQ.");
+        let dlq_payload = serde_json::json!({
+            "job": job,
+            "error": error_msg,
+            "failed_at": chrono::Utc::now()
+        });
+
+        let mut conn = redis.get_multiplexed_async_connection().await?;
+        let _: () = conn.lpush("queue:video_pipeline:dead_letter", dlq_payload.to_string()).await?;
+    }
+
+    Ok(())
 }
 
 async fn handle_extract_metadata(
@@ -126,11 +178,13 @@ async fn handle_extract_metadata(
         asset_id,
         input_url: input_url.clone(),
         idempotency_key: format!("{}-proxy", idempotency_key),
+        attempts: 0,
     };
     let thumb_job = JobPayload::GenerateThumbnails {
         asset_id,
         input_url: input_url.clone(),
         idempotency_key: format!("{}-thumb", idempotency_key),
+        attempts: 0,
     };
 
     let _: () = conn.lpush("queue:video_pipeline", serde_json::to_string(&proxy_job)?).await?;

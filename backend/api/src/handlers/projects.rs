@@ -417,6 +417,7 @@ pub async fn create_export(
         project_id,
         export_id,
         idempotency_key: idempotency_key.clone(),
+        attempts: 0,
     };
 
     let mut conn = redis_client.get_multiplexed_async_connection().await

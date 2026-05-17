@@ -107,6 +107,7 @@ pub async fn confirm_upload(
         asset_id: asset.id,
         input_url: asset.original_url.clone(),
         idempotency_key: job_id.to_string(),
+        attempts: 0,
     };
 
     let mut conn = redis_client.get_multiplexed_async_connection().await

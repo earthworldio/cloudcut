@@ -301,30 +301,40 @@ pub enum JobPayload {
         asset_id: Uuid,
         input_url: String,
         idempotency_key: String,
+        #[serde(default)]
+        attempts: u32,
     },
     #[serde(rename = "generate_proxy")]
     GenerateProxy {
         asset_id: Uuid,
         input_url: String,
         idempotency_key: String,
+        #[serde(default)]
+        attempts: u32,
     },
     #[serde(rename = "generate_thumbnails")]
     GenerateThumbnails {
         asset_id: Uuid,
         input_url: String,
         idempotency_key: String,
+        #[serde(default)]
+        attempts: u32,
     },
     #[serde(rename = "extract_waveform")]
     ExtractWaveform {
         asset_id: Uuid,
         input_url: String,
         idempotency_key: String,
+        #[serde(default)]
+        attempts: u32,
     },
     #[serde(rename = "render_export")]
     RenderExport {
         project_id: Uuid,
         export_id: Uuid,
         idempotency_key: String,
+        #[serde(default)]
+        attempts: u32,
     },
 }
 
