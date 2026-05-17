@@ -254,6 +254,36 @@ pub struct CreateProjectRequest {
     pub description: Option<String>,
 }
 
+/* --- DTO สำหรับระบบ Assets --- */
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresignedUrlRequest {
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub project_id: Uuid,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresignedUrlResponse {
+    pub upload_url: String,
+    pub asset_id: Uuid,
+    pub object_key: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmUploadRequest {
+    pub asset_id: Uuid,
+    pub object_key: String,
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub project_id: Uuid,
+}
+
 /* สำหรับรับข้อมูลการอัปเดต Project */
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct UpdateProjectRequest {

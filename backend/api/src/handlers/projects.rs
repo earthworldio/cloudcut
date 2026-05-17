@@ -190,8 +190,8 @@ pub async fn split_clip(
     })))
 }
 
-/* Helper สำหรับเช็คสิทธิ์การเข้าถึง Project */
-async fn check_project_access(pool: &PgPool, project_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
+/* Helper: ตรวจสอบสิทธิ์การเข้าถึง Project */
+pub async fn check_project_access(pool: &PgPool, project_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
     let has_access = sqlx::query(
         "SELECT 1 FROM projects p 
          JOIN workspace_members wm ON p.workspace_id = wm.workspace_id
