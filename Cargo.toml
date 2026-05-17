@@ -1,7 +1,12 @@
+# บอก Rust ว่ามีหลาย project เป็น workspace 
 [workspace]
+
+# ลงทะเบียนบอก Rust ว่ามีแอพพลิเคชั่นอะไรบ้าง
 members = [
     "backend/api",
     "backend/worker",
     "backend/shared",
 ]
+
+# บอก Rust ว่าให้ใช้ตัวจัดการ version อะไร
 resolver = "2"
