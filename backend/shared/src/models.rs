@@ -3,6 +3,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
+use validator::Validate;
 
 /* Model สำหรับตาราง users */
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -201,16 +202,20 @@ pub struct ExportJob {
 /* --- DTO สำหรับระบบ Authentication --- */
 
 /* สำหรับรับข้อมูลตอน Register */
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, Validate)]
 pub struct RegisterRequest {
+    #[validate(email(message = "Invalid email format"))]
     pub email: String,
+    #[validate(length(min = 8, message = "Password must be at least 8 characters long"))]
     pub password_plain: String,
+    #[validate(length(min = 2, message = "Name must be at least 2 characters long"))]
     pub name: String,
 }
 
 /* สำหรับรับข้อมูลตอน Login */
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, Validate)]
 pub struct LoginRequest {
+    #[validate(email(message = "Invalid email format"))]
     pub email: String,
     pub password_plain: String,
 }

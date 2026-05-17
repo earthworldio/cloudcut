@@ -1,11 +1,12 @@
 mod handlers;
 mod middleware;
+mod error;
 
 use axum::{
     routing::{get, post},
     Router,
 };
-use handlers::auth::{register, login};
+use handlers::auth::{register, login, me};
 use handlers::projects::{list_projects, create_project, get_timeline};
 use shared::establish_connection;
 use std::net::SocketAddr;
@@ -30,10 +31,15 @@ async fn main() {
         /* Auth Routes */
         .route("/api/auth/register", post(register))
         .route("/api/auth/login", post(login))
+        .route("/api/auth/me", get(me))
         
         /* Project & Timeline Routes */
         .route("/api/projects", get(list_projects).post(create_project))
         .route("/api/projects/:id/timeline", get(get_timeline))
+        .route("/api/projects/:id/tracks", post(handlers::projects::create_track))
+        .route("/api/projects/:id/clips", post(handlers::projects::create_clip))
+        .route("/api/projects/:id/clips/:clip_id", post(handlers::projects::update_clip))
+        .route("/api/projects/:id/clips/:clip_id/split", post(handlers::projects::split_clip))
         
         .layer(cors)
         .with_state(pool);

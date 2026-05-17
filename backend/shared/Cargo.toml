@@ -13,3 +13,4 @@ chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
 bcrypt = "0.15"
 jsonwebtoken = "9"
+validator = { version = "0.18", features = ["derive"] }
