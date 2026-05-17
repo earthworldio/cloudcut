@@ -238,6 +238,30 @@ pub struct JwtClaims {
     pub iat: i64,  /* วันที่ออกตั๋ว */
 }
 
+/* --- DTO สำหรับระบบ Project & Timeline --- */
+
+/* สำหรับรับข้อมูลการสร้าง Project */
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CreateProjectRequest {
+    pub workspace_id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+/* สำหรับส่งข้อมูล Timeline แบบรวมศูนย์ (Unified Structure) */
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TimelineResponse {
+    pub project: Project,
+    pub tracks: Vec<TrackWithClips>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TrackWithClips {
+    #[serde(flatten)]
+    pub track: Track,
+    pub clips: Vec<Clip>,
+}
+
 /* Model สำหรับตาราง processing_jobs */
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ProcessingJob {
