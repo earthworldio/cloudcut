@@ -198,6 +198,46 @@ pub struct ExportJob {
     pub updated_at: DateTime<Utc>,
 }
 
+/* --- DTO สำหรับระบบ Authentication --- */
+
+/* สำหรับรับข้อมูลตอน Register */
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RegisterRequest {
+    pub email: String,
+    pub password_plain: String,
+    pub name: String,
+}
+
+/* สำหรับรับข้อมูลตอน Login */
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password_plain: String,
+}
+
+/* สำหรับตอบกลับเมื่อ Auth สำเร็จ */
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AuthResponse {
+    pub token: String,
+    pub user: UserResponse,
+}
+
+/* ข้อมูล User ที่จะส่งกลับไป (ไม่ส่ง password hash) */
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UserResponse {
+    pub id: Uuid,
+    pub email: String,
+    pub name: String,
+}
+
+/* โครงสร้าง Claims สำหรับฝังใน JWT Token */
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct JwtClaims {
+    pub sub: Uuid, /* User ID */
+    pub exp: i64,  /* วันหมดอายุ */
+    pub iat: i64,  /* วันที่ออกตั๋ว */
+}
+
 /* Model สำหรับตาราง processing_jobs */
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ProcessingJob {
