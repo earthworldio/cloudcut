@@ -220,7 +220,7 @@ export const EditorPage: React.FC = () => {
   );
 };
 
-// Helper: Format milliseconds to HH:MM:SS:mm
+/* Helper: Format milliseconds to HH:MM:SS:mm */
 function formatTime(ms: number) {
   const hours = Math.floor(ms / 3600000);
   const minutes = Math.floor((ms % 3600000) / 60000);

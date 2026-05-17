@@ -89,7 +89,7 @@ export interface Asset {
   uploaded_by: string;
   type: 'video' | 'audio' | 'image' | 'other';
   original_url: string;
-  url?: string; // เพิ่มฟิลด์นี้สำหรับแสดงผล Preview
+  url?: string; /* เพิ่มฟิลด์นี้สำหรับแสดงผล Preview */
   status: 'uploading' | 'processing' | 'ready' | 'failed';
   metadata: any;
   created_at: string;

@@ -62,7 +62,7 @@ async fn main() {
         .region(aws_sdk_s3::config::Region::new(region))
         .load()
         .await)
-        .force_path_style(true); // จำเป็นสำหรับ MinIO
+        .force_path_style(true); /* จำเป็นสำหรับ MinIO */
     
     if let Some(url) = endpoint_url {
         s3_config_builder = s3_config_builder.endpoint_url(url);

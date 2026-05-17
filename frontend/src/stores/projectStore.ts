@@ -26,7 +26,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   assets: [],
   selectedClipId: null,
   currentTimeMs: 0,
-  zoomScale: 0.1, // 100ms = 10px by default
+  zoomScale: 0.1, /* 100ms = 10px by default */
 
   setTimeline: (data) => set({ 
     currentProject: data.project, 
