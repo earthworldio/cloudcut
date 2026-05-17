@@ -14,21 +14,34 @@ import {
   Download,
   Search,
   Plus,
+  Edit2,
+  Check,
+  X,
 } from "lucide-react";
 import { Timeline } from "../components";
+import { toast } from "../lib/swal";
 
 export const EditorPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState("");
 
-  const { currentProject, setTimeline, currentTimeMs } = useProjectStore();
+  const { currentProject, setTimeline, currentTimeMs, updateProjectNameLocal } =
+    useProjectStore();
 
   useEffect(() => {
     if (id) {
       fetchTimeline(id);
     }
   }, [id]);
+
+  useEffect(() => {
+    if (currentProject) {
+      setTempName(currentProject.name);
+    }
+  }, [currentProject]);
 
   const fetchTimeline = async (projectId: string) => {
     try {
@@ -41,6 +54,30 @@ export const EditorPage: React.FC = () => {
       navigate("/dashboard");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleNameUpdate = async () => {
+    if (!id || !tempName.trim() || tempName === currentProject?.name) {
+      setIsEditingName(false);
+      return;
+    }
+
+    try {
+      await api.patch(`/projects/${id}`, { name: tempName });
+      updateProjectNameLocal(tempName);
+      toast.fire({
+        icon: "success",
+        title: "Project renamed",
+      });
+    } catch (err) {
+      toast.fire({
+        icon: "error",
+        title: "Failed to rename project",
+      });
+      setTempName(currentProject?.name || "");
+    } finally {
+      setIsEditingName(false);
     }
   };
 
@@ -63,7 +100,52 @@ export const EditorPage: React.FC = () => {
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <h1 className="font-semibold">{currentProject?.name}</h1>
+
+          <div className="flex items-center gap-2 group">
+            {isEditingName ? (
+              <div className="flex items-center gap-1">
+                <input
+                  autoFocus
+                  className="bg-input border border-primary px-2 py-0.5 rounded text-sm outline-none w-64"
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleNameUpdate();
+                    if (e.key === "Escape") {
+                      setTempName(currentProject?.name || "");
+                      setIsEditingName(false);
+                    }
+                  }}
+                />
+                <button
+                  onClick={handleNameUpdate}
+                  className="p-1 hover:bg-green-500/20 text-green-500 rounded transition-colors"
+                  title="Save"
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    setTempName(currentProject?.name || "");
+                    setIsEditingName(false);
+                  }}
+                  className="p-1 hover:bg-red-500/20 text-red-500 rounded transition-colors"
+                  title="Cancel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div
+                className="flex items-center gap-2 cursor-pointer hover:bg-muted px-2 py-0.5 rounded transition-colors"
+                onClick={() => setIsEditingName(true)}
+              >
+                <h1 className="font-semibold">{currentProject?.name}</h1>
+                <Edit2 className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            )}
+          </div>
+
           <div className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
             {currentProject?.settings.resolution} @{" "}
             {currentProject?.settings.fps}fps

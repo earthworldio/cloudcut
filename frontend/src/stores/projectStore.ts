@@ -13,6 +13,7 @@ interface ProjectState {
   setCurrentTime: (timeMs: number) => void;
   setZoomScale: (scale: number) => void;
   updateClipPositionLocal: (clipId: string, trackPositionMs: number, trackId: string) => void;
+  updateProjectNameLocal: (name: string) => void;
 }
 
 export const useProjectStore = create<ProjectState>((set) => ({
@@ -40,5 +41,9 @@ export const useProjectStore = create<ProjectState>((set) => ({
         ? track.clips.map(clip => clip.id === clipId ? { ...clip, track_position_ms: trackPositionMs } : clip)
         : track.clips.filter(clip => clip.id !== clipId)
     }))
+  })),
+
+  updateProjectNameLocal: (name) => set((state) => ({
+    currentProject: state.currentProject ? { ...state.currentProject, name } : null
   }))
 }));

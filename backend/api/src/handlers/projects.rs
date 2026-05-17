@@ -4,7 +4,7 @@ use axum::{
     response::IntoResponse,
 };
 use serde_json::json;
-use shared::models::{Project, CreateProjectRequest, TimelineResponse, TrackWithClips, Track, Clip};
+use shared::models::{Project, CreateProjectRequest, UpdateProjectRequest, TimelineResponse, TrackWithClips, Track, Clip};
 use crate::middleware::auth::Claims;
 use crate::error::AppError;
 use sqlx::{PgPool};
@@ -288,6 +288,33 @@ pub async fn create_project(
     tx.commit().await?;
 
     Ok((axum::http::StatusCode::CREATED, Json(project)))
+}
+
+/* 4. อัปเดตข้อมูลโปรเจกต์ (เช่น เปลี่ยนชื่อ) */
+pub async fn update_project(
+    State(pool): State<PgPool>,
+    Claims(user_id): Claims,
+    Path(project_id): Path<Uuid>,
+    Json(payload): Json<UpdateProjectRequest>,
+) -> Result<Json<Project>, AppError> {
+    check_project_access(&pool, project_id, user_id).await?;
+
+    let project = sqlx::query_as::<_, Project>(
+        "UPDATE projects SET 
+            name = COALESCE($1, name),
+            description = COALESCE($2, description),
+            updated_at = NOW()
+         WHERE id = $3 AND deleted_at IS NULL
+         RETURNING *"
+    )
+    .bind(payload.name)
+    .bind(payload.description)
+    .bind(project_id)
+    .fetch_optional(&pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Project not found".into()))?;
+
+    Ok(Json(project))
 }
 
 /* 3. ดึงข้อมูล Timeline แบบครบจบในชุดเดียว (Project + Tracks + Clips) */

@@ -254,6 +254,13 @@ pub struct CreateProjectRequest {
     pub description: Option<String>,
 }
 
+/* สำหรับรับข้อมูลการอัปเดต Project */
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct UpdateProjectRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
 /* สำหรับส่งข้อมูล Timeline แบบรวมศูนย์ (Unified Structure) */
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TimelineResponse {

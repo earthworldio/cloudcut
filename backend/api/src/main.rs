@@ -3,11 +3,11 @@ mod middleware;
 mod error;
 
 use axum::{
-    routing::{get, post},
+    routing::{get, post, patch},
     Router,
 };
 use handlers::auth::{register, login, me};
-use handlers::projects::{list_projects, create_project, get_timeline};
+use handlers::projects::{list_projects, create_project, get_timeline, update_project};
 use shared::establish_connection;
 use std::net::SocketAddr;
 use tower_http::cors::{CorsLayer, Any};
@@ -35,6 +35,7 @@ async fn main() {
         
         /* Project & Timeline Routes */
         .route("/api/projects", get(list_projects).post(create_project))
+        .route("/api/projects/:id", patch(update_project).get(get_timeline))
         .route("/api/projects/:id/timeline", get(get_timeline))
         .route("/api/projects/:id/tracks", post(handlers::projects::create_track))
         .route("/api/projects/:id/clips", post(handlers::projects::create_clip))
