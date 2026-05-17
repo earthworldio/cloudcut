@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useAuthStore } from "../stores/authStore";
 import type { AuthResponse } from "../types";
+import { alert, toast } from "../lib/swal";
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -25,12 +26,23 @@ export const LoginPage: React.FC = () => {
       });
 
       login(response.data.token, response.data.user);
+
+      toast.fire({
+        icon: "success",
+        title: `Welcome back, ${response.data.user.name}`,
+      });
+
       navigate("/dashboard");
     } catch (err: any) {
-      setError(
+      const msg =
         err.response?.data?.message ||
-          "Login failed. Please check your credentials.",
-      );
+        "Login failed. Please check your credentials.";
+      setError(msg);
+      toast.fire({
+        icon: "error",
+        title: "Authentication Error",
+        text: msg,
+      });
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import api from "../api/axios";
 import type { Project } from "../types";
 import { Plus, Video, LogOut, Layout } from "lucide-react";
 import { useAuthStore } from "../stores/authStore";
+import { alert, toast } from "../lib/swal";
 
 export const DashboardPage: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -30,7 +31,8 @@ export const DashboardPage: React.FC = () => {
     try {
       /* สำหรับเดโม ใช้ workspace_id ตัวแรกของผู้ใช้ (ถ้ามี) หรือขอจาก backend */
       /* ในระบบจริงอาจต้องดึง Workspace List มาก่อน */
-      const response = await api.get("/auth/me"); /* เช็คข้อมูลผู้ใช้และ workspace */
+      const response =
+        await api.get("/auth/me"); /* เช็คข้อมูลผู้ใช้และ workspace */
       const me = response.data;
 
       const newProject = await api.post<Project>("/projects", {
@@ -41,9 +43,18 @@ export const DashboardPage: React.FC = () => {
         description: "Created from dashboard",
       });
 
+      toast.fire({
+        icon: "success",
+        title: "Project created successfully",
+      });
+
       navigate(`/projects/${newProject.data.id}`);
-    } catch (err) {
-      alert("Failed to create project. Please check if you have a workspace.");
+    } catch (err: any) {
+      alert.error(
+        "Failed to create project",
+        err.response?.data?.message ||
+          "Please check if you have an active workspace.",
+      );
     }
   };
 
