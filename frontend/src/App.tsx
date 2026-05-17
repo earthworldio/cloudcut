@@ -1,9 +1,20 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { LoginPage, DashboardPage, EditorPage } from "./pages";
-import { ProtectedRoute } from "./components";
-import "./App.css";
+import { LoginPage, DashboardPage, EditorPage } from './pages';
+import { ProtectedRoute } from './components';
+import { useEffect } from 'react';
+import { useAuthStore } from './stores/authStore';
+import './App.css';
 
 function App() {
+  const fetchMe = useAuthStore((state) => state.fetchMe);
+  const token = useAuthStore((state) => state.token);
+
+  useEffect(() => {
+    if (token) {
+      fetchMe();
+    }
+  }, [token, fetchMe]);
+
   return (
     <BrowserRouter>
       <Routes>

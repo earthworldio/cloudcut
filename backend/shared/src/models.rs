@@ -233,6 +233,7 @@ pub struct UserResponse {
     pub id: Uuid,
     pub email: String,
     pub name: String,
+    pub workspace_id: Option<Uuid>, /* เพิ่มฟิลด์นี้ */
 }
 
 /* โครงสร้าง Claims สำหรับฝังใน JWT Token */

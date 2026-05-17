@@ -29,18 +29,18 @@ export const DashboardPage: React.FC = () => {
 
   const createProject = async () => {
     try {
-      /* สำหรับเดโม ใช้ workspace_id ตัวแรกของผู้ใช้ (ถ้ามี) หรือขอจาก backend */
-      /* ในระบบจริงอาจต้องดึง Workspace List มาก่อน */
-      const response =
-        await api.get("/auth/me"); /* เช็คข้อมูลผู้ใช้และ workspace */
-      const me = response.data;
+      /* ดึงข้อมูล user ล่าสุดจาก store (ซึ่งมี workspace_id แล้ว) */
+      const currentUser = useAuthStore.getState().user;
+      
+      if (!currentUser?.workspace_id) {
+        alert.error('No Workspace', 'We could not find an active workspace for your account. Please try logging in again.');
+        return;
+      }
 
-      const newProject = await api.post<Project>("/projects", {
-        name: "New Project " + new Date().toLocaleTimeString(),
-        workspace_id:
-          me.workspace_id ||
-          projects[0]?.workspace_id /* fallback สำหรับเดโม */,
-        description: "Created from dashboard",
+      const newProject = await api.post<Project>('/projects', {
+        name: 'New Project ' + new Date().toLocaleTimeString(),
+        workspace_id: currentUser.workspace_id,
+        description: 'Created from dashboard',
       });
 
       toast.fire({

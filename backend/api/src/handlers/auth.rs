@@ -21,10 +21,19 @@ pub async fn me(
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
+    /* หา workspace ตัวแรกที่ user สังกัด */
+    let workspace_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT workspace_id FROM workspace_members WHERE user_id = $1 LIMIT 1"
+    )
+    .bind(user_id)
+    .fetch_optional(&pool)
+    .await?;
+
     Ok(Json(UserResponse {
         id: user.id,
         email: user.email,
         name: user.name,
+        workspace_id,
     }))
 }
 
@@ -87,6 +96,7 @@ pub async fn register(
         id: user.id,
         email: user.email,
         name: user.name,
+        workspace_id: Some(workspace_id),
     })))
 }
 
@@ -125,6 +135,14 @@ pub async fn login(
     let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(jwt_secret.as_ref()))
         .map_err(|e| anyhow::anyhow!("Error generating token: {}", e))?;
 
+    /* หา workspace_id ตัวแรก */
+    let workspace_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT workspace_id FROM workspace_members WHERE user_id = $1 LIMIT 1"
+    )
+    .bind(user.id)
+    .fetch_optional(&pool)
+    .await?;
+
     /* 5. ส่ง Token และข้อมูล User กลับไป */
     Ok(Json(AuthResponse {
         token,
@@ -132,6 +150,7 @@ pub async fn login(
             id: user.id,
             email: user.email,
             name: user.name,
+            workspace_id,
         },
     }))
 }
