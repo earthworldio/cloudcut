@@ -46,6 +46,9 @@ pub async fn handle_job(
         JobPayload::GenerateThumbnails { asset_id, input_url, idempotency_key } => {
             handle_generate_thumbnails(asset_id, input_url, idempotency_key, db, s3).await
         }
+        JobPayload::RenderExport { project_id, export_id, idempotency_key } => {
+            crate::export_pipeline::handle_render_export(project_id, export_id, idempotency_key, db, s3).await
+        }
         _ => {
             warn!("Unhandled job type");
             Ok(())
@@ -116,7 +119,7 @@ async fn handle_extract_metadata(
         .execute(db)
         .await?;
 
-    // แตกงานย่อย: Generate Proxy และ Thumbnails
+    /* แตกงานย่อย: Generate Proxy และ Thumbnails */
     let mut conn = redis.get_multiplexed_async_connection().await?;
     
     let proxy_job = JobPayload::GenerateProxy {
@@ -165,11 +168,11 @@ async fn handle_generate_proxy(
         return Err(anyhow::anyhow!("ffmpeg proxy failed"));
     }
 
-    // Upload Proxy to MinIO
+    /* Upload Proxy to MinIO */
     let proxy_key = format!("{}_proxy.mp4", input_url);
     upload_to_minio(s3, &temp_output, &proxy_key, "video/mp4").await?;
     
-    // บันทึก variant
+    /* บันทึก variant */
     add_asset_variant(db, asset_id, "proxy", &proxy_key).await?;
     check_and_finalize_asset(db, asset_id).await?;
 
@@ -205,8 +208,8 @@ async fn handle_generate_thumbnails(
         return Err(anyhow::anyhow!("ffmpeg thumbnails failed"));
     }
 
-    // ในที่นี้เราจะจำลองการเก็บแค่รูปแรกเป็น thumbnail หลัก หรือคุณอาจจะ Zip ก็ได้
-    // เพื่อความง่าย เราจะหยิบ thumb_001.jpg ขึ้นไป
+    /* ในที่นี้เราจะจำลองการเก็บแค่รูปแรกเป็น thumbnail หลัก หรือคุณอาจจะ Zip ก็ได้ */
+    /* เพื่อความง่าย เราจะหยิบ thumb_001.jpg ขึ้นไป */
     let thumb_local = format!("{}/thumb_001.jpg", temp_dir);
     let thumb_key = format!("{}_thumb.jpg", input_url);
     
@@ -249,7 +252,7 @@ async fn add_asset_variant(db: &PgPool, asset_id: Uuid, kind: &str, url: &str) -
 }
 
 async fn check_and_finalize_asset(db: &PgPool, asset_id: Uuid) -> Result<()> {
-    // เช็คว่ามีทั้ง proxy และ thumbnail หรือยัง
+    /* เช็คว่ามีทั้ง proxy และ thumbnail หรือยัง */
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM asset_variants WHERE asset_id = $1 AND type IN ('proxy', 'thumbnail')")
         .bind(asset_id).fetch_one(db).await?;
     

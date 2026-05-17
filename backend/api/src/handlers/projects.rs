@@ -4,7 +4,8 @@ use axum::{
     response::IntoResponse,
 };
 use serde_json::json;
-use shared::models::{Project, CreateProjectRequest, UpdateProjectRequest, TimelineResponse, TrackWithClips, Track, Clip};
+use shared::models::{Project, CreateProjectRequest, UpdateProjectRequest, TimelineResponse, TrackWithClips, Track, Clip, JobPayload};
+use redis::AsyncCommands;
 use crate::middleware::auth::Claims;
 use crate::error::AppError;
 use sqlx::{PgPool};
@@ -370,4 +371,67 @@ pub async fn get_timeline(
         project,
         tracks: track_with_clips,
     }))
+}
+
+/* 5. สร้าง Export Job */
+#[derive(serde::Deserialize)]
+pub struct ExportRequest {
+    pub format: String,     /* เช่น "mp4" */
+    pub resolution: String, /* เช่น "1080p" */
+}
+
+pub async fn create_export(
+    State(pool): State<PgPool>,
+    State(redis_client): State<redis::Client>,
+    Claims(user_id): Claims,
+    Path(project_id): Path<Uuid>,
+    Json(payload): Json<ExportRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    /* 1. ตรวจสอบสิทธิ์ Project */
+    check_project_access(&pool, project_id, user_id).await?;
+
+    /* 2. สร้าง Export Job record */
+    let export_id = Uuid::now_v7();
+    let idempotency_key = format!("export-{}", export_id);
+
+    let mut tx = pool.begin().await?;
+
+    sqlx::query(
+        "INSERT INTO export_jobs (id, project_id, requested_by, format, resolution, quality, status, progress_percent, idempotency_key) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+    )
+    .bind(export_id)
+    .bind(project_id)
+    .bind(user_id)
+    .bind(&payload.format)
+    .bind(&payload.resolution)
+    .bind("high")
+    .bind("queued")
+    .bind(0)
+    .bind(&idempotency_key)
+    .execute(&mut *tx)
+    .await?;
+
+    /* 3. ส่งงานเข้า Redis */
+    let job_payload = JobPayload::RenderExport {
+        project_id,
+        export_id,
+        idempotency_key: idempotency_key.clone(),
+    };
+
+    let mut conn = redis_client.get_multiplexed_async_connection().await
+        .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Redis connection error: {}", e))))?;
+
+    let _: () = conn.lpush("queue:video_pipeline", serde_json::to_string(&job_payload).unwrap()).await
+        .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Redis push error: {}", e))))?;
+
+    tx.commit().await?;
+
+    Ok((
+        axum::http::StatusCode::ACCEPTED,
+        Json(json!({
+            "exportId": export_id,
+            "status": "queued"
+        })),
+    ))
 }

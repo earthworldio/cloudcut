@@ -107,6 +107,7 @@ async fn main() {
         .route("/projects/:id/clips", post(handlers::projects::create_clip))
         .route("/projects/:id/clips/:clip_id", post(handlers::projects::update_clip))
         .route("/projects/:id/clips/:clip_id/split", post(handlers::projects::split_clip))
+        .route("/projects/:id/exports", post(handlers::projects::create_export))
         
         /* Asset Routes */
         .route("/assets/presigned-url", post(handlers::assets::get_presigned_url))
@@ -122,12 +123,7 @@ async fn main() {
     /* 5. เริ่ม Server */
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
     println!("🚀 Server started at http://{}", addr);
-    println!("📡 API Endpoints:");
-    println!("   - POST /api/auth/register");
-    println!("   - POST /api/auth/login");
-    println!("   - GET  /api/projects (Protected)");
-    println!("   - POST /api/projects (Protected)");
-    println!("   - GET  /api/projects/:id/timeline (Protected)");
+
     
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

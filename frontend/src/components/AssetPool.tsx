@@ -244,7 +244,7 @@ export const AssetPool: React.FC = () => {
   );
 };
 
-// Helper: Format milliseconds to MM:SS
+/* Helper: Format milliseconds to MM:SS */
 function formatDuration(ms: number) {
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);

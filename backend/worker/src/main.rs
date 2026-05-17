@@ -1,4 +1,5 @@
 mod processor;
+mod export_pipeline;
 
 use anyhow::{Context, Result};
 use redis::AsyncCommands;
