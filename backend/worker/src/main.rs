@@ -65,12 +65,12 @@ async fn main() -> Result<()> {
         if let Some((_, payload)) = job_res {
             info!("📥 Received new job");
             
-            /* ประมวลผลงาน (แยกเป็น Task เพื่อไม่ให้ Block Loop หลัก) */
             let db_clone = db.clone();
             let s3_clone = s3_client.clone();
+            let redis_client_clone = redis_client.clone();
             
             tokio::spawn(async move {
-                if let Err(e) = processor::process_job(&payload, &db_clone, &s3_clone).await {
+                if let Err(e) = processor::handle_job(&payload, &db_clone, &redis_client_clone, &s3_clone).await {
                     error!(error = %e, "Job processing failed");
                 }
             });

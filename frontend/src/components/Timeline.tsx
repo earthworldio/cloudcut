@@ -9,7 +9,6 @@ export const Timeline: React.FC = () => {
     zoomScale,
     setZoomScale,
     currentTimeMs,
-    setCurrentTime,
     selectedClipId,
     selectClip,
   } = useProjectStore();

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useAuthStore } from "../stores/authStore";
 import type { AuthResponse } from "../types";
-import { alert, toast } from "../lib/swal";
+import { toast } from "../lib/swal";
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");

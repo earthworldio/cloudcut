@@ -6,7 +6,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use crate::middleware::auth::Claims;
 use crate::error::AppError;
-use shared::models::{Asset, PresignedUrlRequest, PresignedUrlResponse, ConfirmUploadRequest};
+use shared::models::{Asset, PresignedUrlRequest, PresignedUrlResponse, ConfirmUploadRequest, JobPayload};
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_s3::presigning::PresigningConfig;
 use std::time::Duration;
@@ -103,22 +103,16 @@ pub async fn confirm_upload(
 
     /* Push job to Redis queue */
     let job_id = Uuid::now_v7();
-    let job_payload = serde_json::json!({
-        "jobId": job_id,
-        "taskType": "extract_metadata",
-        "assetId": asset.id,
-        "objectKey": asset.original_url,
-        "projectId": asset.project_id,
-        "workspaceId": (sqlx::query_scalar::<_, Uuid>("SELECT workspace_id FROM projects WHERE id = $1")
-            .bind(asset.project_id)
-            .fetch_one(&mut *tx)
-            .await?)
-    });
+    let job_payload = JobPayload::ExtractMetadata {
+        asset_id: asset.id,
+        input_url: asset.original_url.clone(),
+        idempotency_key: job_id.to_string(),
+    };
 
     let mut conn = redis_client.get_multiplexed_async_connection().await
         .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Redis connection error: {}", e))))?;
 
-    let _: () = conn.lpush("queue:video_pipeline", job_payload.to_string()).await
+    let _: () = conn.lpush("queue:video_pipeline", serde_json::to_string(&job_payload).unwrap()).await
         .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Redis push error: {}", e))))?;
 
     /* Commit Transaction */

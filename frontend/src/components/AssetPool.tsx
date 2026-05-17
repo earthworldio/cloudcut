@@ -23,11 +23,24 @@ export const AssetPool: React.FC = () => {
 
   const { currentProject, assets, setAssets, addAsset } = useProjectStore();
 
+  /* 1. Fetch assets on load */
   useEffect(() => {
     if (currentProject) {
       fetchAssets();
     }
   }, [currentProject?.id]);
+
+  /* 2. Polling for 'processing' assets */
+  useEffect(() => {
+    const hasProcessing = assets.some((a) => a.status === "processing");
+    if (!hasProcessing) return;
+
+    const interval = setInterval(() => {
+      fetchAssets();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [assets]);
 
   const fetchAssets = async () => {
     try {
@@ -199,7 +212,7 @@ export const AssetPool: React.FC = () => {
 
                 {/* Status Badge */}
                 {asset.status !== "ready" && (
-                  <div className="absolute top-1 right-1 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 text-white">
+                  <div className="absolute top-1 right-1 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 text-white z-10">
                     {asset.status === "processing" && (
                       <Loader2 className="w-2.5 h-2.5 animate-spin" />
                     )}
@@ -210,7 +223,14 @@ export const AssetPool: React.FC = () => {
                   </div>
                 )}
 
-                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
+                {/* Duration Badge (Only when ready) */}
+                {asset.status === "ready" && asset.metadata?.durationMs && (
+                  <div className="absolute top-1 right-1 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] text-white z-10">
+                    {formatDuration(asset.metadata.durationMs)}
+                  </div>
+                )}
+
+                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-1.5 z-10">
                   <p className="text-[10px] text-white truncate font-medium">
                     {asset.metadata?.filename || "Untitled"}
                   </p>
@@ -223,3 +243,11 @@ export const AssetPool: React.FC = () => {
     </div>
   );
 };
+
+// Helper: Format milliseconds to MM:SS
+function formatDuration(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}

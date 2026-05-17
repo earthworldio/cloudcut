@@ -291,6 +291,43 @@ pub struct UpdateProjectRequest {
     pub description: Option<String>,
 }
 
+/* --- Job Payload Enum (Spec 3.3) --- */
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum JobPayload {
+    #[serde(rename = "extract_metadata")]
+    ExtractMetadata {
+        asset_id: Uuid,
+        input_url: String,
+        idempotency_key: String,
+    },
+    #[serde(rename = "generate_proxy")]
+    GenerateProxy {
+        asset_id: Uuid,
+        input_url: String,
+        idempotency_key: String,
+    },
+    #[serde(rename = "generate_thumbnails")]
+    GenerateThumbnails {
+        asset_id: Uuid,
+        input_url: String,
+        idempotency_key: String,
+    },
+    #[serde(rename = "extract_waveform")]
+    ExtractWaveform {
+        asset_id: Uuid,
+        input_url: String,
+        idempotency_key: String,
+    },
+    #[serde(rename = "render_export")]
+    RenderExport {
+        project_id: Uuid,
+        export_id: Uuid,
+        idempotency_key: String,
+    },
+}
+
 /* สำหรับส่งข้อมูล Timeline แบบรวมศูนย์ (Unified Structure) */
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TimelineResponse {
