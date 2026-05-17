@@ -4,7 +4,6 @@ use axum::{
     Json,
 };
 use serde::Serialize;
-use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
 

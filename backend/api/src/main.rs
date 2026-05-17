@@ -22,8 +22,8 @@ async fn main() {
 
     /* 2. ตั้งค่า CORS (อนุญาตให้ Frontend เข้าถึงได้) */
     let cors = CorsLayer::new()
-        .allow_origin("http://localhost:5173".parse::<HeaderValue>().unwrap())
-        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
+        .allow_origin("http://localhost:5174".parse::<HeaderValue>().unwrap())
+        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
         .allow_headers(Any);
 
     /* 3. ตั้งค่า Router */

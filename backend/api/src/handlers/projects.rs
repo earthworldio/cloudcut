@@ -3,6 +3,7 @@ use axum::{
     Json,
     response::IntoResponse,
 };
+use serde_json::json;
 use shared::models::{Project, CreateProjectRequest, TimelineResponse, TrackWithClips, Track, Clip};
 use crate::middleware::auth::Claims;
 use crate::error::AppError;

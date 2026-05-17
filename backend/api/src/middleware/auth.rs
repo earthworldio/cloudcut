@@ -1,24 +1,16 @@
 use axum::{
     async_trait,
-    extract::{FromRequestParts, State},
-    http::{request::Parts, StatusCode},
+    extract::FromRequestParts,
+    http::request::Parts,
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use shared::models::JwtClaims;
 use std::env;
 use uuid::Uuid;
-use sqlx::PgPool;
 use crate::error::AppError;
 
 /* โครงสร้างสำหรับเก็บ User ID ที่ได้จาก Token */
 pub struct Claims(pub Uuid);
-
-/* โครงสร้างสำหรับตรวจสอบสิทธิ์ใน Workspace */
-pub struct WorkspaceAuth {
-    pub workspace_id: Uuid,
-    pub user_id: Uuid,
-    pub role: String,
-}
 
 /* Implement FromRequestParts เพื่อให้ Axum ใช้เป็น Extractor ได้ */
 #[async_trait]
@@ -28,7 +20,7 @@ where
 {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         /* 1. ดึง Token จาก Header Authorization */
         let auth_header = parts
             .headers
