@@ -1,14 +1,18 @@
 import { create } from 'zustand';
-import type { Project, Track, Clip, TimelineData } from '../types';
+import type { Project, Track, Clip, TimelineData, Asset } from '../types';
 
 interface ProjectState {
   currentProject: Project | null;
   tracks: Array<Track & { clips: Clip[] }>;
+  assets: Asset[];
   selectedClipId: string | null;
   currentTimeMs: number;
   zoomScale: number; /* pixels per millisecond */
   
   setTimeline: (data: TimelineData) => void;
+  setAssets: (assets: Asset[]) => void;
+  addAsset: (asset: Asset) => void;
+  updateAssetStatus: (assetId: string, status: Asset['status']) => void;
   selectClip: (clipId: string | null) => void;
   setCurrentTime: (timeMs: number) => void;
   setZoomScale: (scale: number) => void;
@@ -19,6 +23,7 @@ interface ProjectState {
 export const useProjectStore = create<ProjectState>((set) => ({
   currentProject: null,
   tracks: [],
+  assets: [],
   selectedClipId: null,
   currentTimeMs: 0,
   zoomScale: 0.1, // 100ms = 10px by default
@@ -27,6 +32,16 @@ export const useProjectStore = create<ProjectState>((set) => ({
     currentProject: data.project, 
     tracks: data.tracks 
   }),
+
+  setAssets: (assets) => set({ assets }),
+  
+  addAsset: (asset) => set((state) => ({ 
+    assets: [asset, ...state.assets] 
+  })),
+
+  updateAssetStatus: (assetId, status) => set((state) => ({
+    assets: state.assets.map(a => a.id === assetId ? { ...a, status } : a)
+  })),
   
   selectClip: (clipId) => set({ selectedClipId: clipId }),
   

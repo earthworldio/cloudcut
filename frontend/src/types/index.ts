@@ -82,3 +82,22 @@ export interface AuthResponse {
   token: string;
   user: User;
 }
+
+export interface Asset {
+  id: string;
+  project_id: string;
+  uploaded_by: string;
+  type: 'video' | 'audio' | 'image' | 'other';
+  original_url: string;
+  url?: string; // เพิ่มฟิลด์นี้สำหรับแสดงผล Preview
+  status: 'uploading' | 'processing' | 'ready' | 'failed';
+  metadata: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PresignedUrlResponse {
+  uploadUrl: string;
+  assetId: string;
+  objectKey: string;
+}

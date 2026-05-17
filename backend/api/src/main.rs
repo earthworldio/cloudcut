@@ -19,6 +19,7 @@ use sqlx::PgPool;
 pub struct AppState {
     pub db: PgPool,
     pub s3: aws_sdk_s3::Client,
+    pub redis: redis::Client,
 }
 
 impl FromRef<AppState> for PgPool {
@@ -32,6 +33,15 @@ impl FromRef<AppState> for aws_sdk_s3::Client {
         app_state.s3.clone()
     }
 }
+
+impl FromRef<AppState> for redis::Client {
+    fn from_ref(app_state: &AppState) -> Self {
+        app_state.redis.clone()
+    }
+}
+
+use axum::http::Request;
+use tower_http::trace::TraceLayer;
 
 #[tokio::main]
 async fn main() {
@@ -66,9 +76,14 @@ async fn main() {
     
     let s3_client = aws_sdk_s3::Client::from_conf(s3_config_builder.build());
 
+    /* 3. ตั้งค่า Redis Client */
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let redis_client = redis::Client::open(redis_url).expect("Failed to create Redis client");
+
     let state = AppState {
         db: pool,
         s3: s3_client,
+        redis: redis_client,
     };
 
     /* 3. ตั้งค่า CORS (อนุญาตให้ Frontend เข้าถึงได้) */
@@ -78,27 +93,30 @@ async fn main() {
         .allow_headers(Any);
 
     /* 4. ตั้งค่า Router */
-    let app = Router::new()
+    let api_routes = Router::new()
         /* Auth Routes */
-        .route("/api/auth/register", post(register))
-        .route("/api/auth/login", post(login))
-        .route("/api/auth/me", get(me))
+        .route("/auth/register", post(register))
+        .route("/auth/login", post(login))
+        .route("/auth/me", get(me))
         
         /* Project & Timeline Routes */
-        .route("/api/projects", get(list_projects).post(create_project))
-        .route("/api/projects/:id", patch(update_project).get(get_timeline))
-        .route("/api/projects/:id/timeline", get(get_timeline))
-        .route("/api/projects/:id/tracks", post(handlers::projects::create_track))
-        .route("/api/projects/:id/clips", post(handlers::projects::create_clip))
-        .route("/api/projects/:id/clips/:clip_id", post(handlers::projects::update_clip))
-        .route("/api/projects/:id/clips/:clip_id/split", post(handlers::projects::split_clip))
+        .route("/projects", get(list_projects).post(create_project))
+        .route("/projects/:id", patch(update_project).get(get_timeline))
+        .route("/projects/:id/timeline", get(get_timeline))
+        .route("/projects/:id/tracks", post(handlers::projects::create_track))
+        .route("/projects/:id/clips", post(handlers::projects::create_clip))
+        .route("/projects/:id/clips/:clip_id", post(handlers::projects::update_clip))
+        .route("/projects/:id/clips/:clip_id/split", post(handlers::projects::split_clip))
         
         /* Asset Routes */
-        .route("/api/assets/presigned-url", post(handlers::assets::get_presigned_url))
-        .route("/api/assets/confirm-upload", post(handlers::assets::confirm_upload))
-        .route("/api/assets", get(handlers::assets::list_assets))
+        .route("/assets/presigned-url", post(handlers::assets::get_presigned_url))
+        .route("/assets/confirm-upload", post(handlers::assets::confirm_upload))
+        .route("/assets", get(handlers::assets::list_assets));
 
+    let app = Router::new()
+        .nest("/api", api_routes)
         .layer(cors)
+        .layer(TraceLayer::new_for_http())
         .with_state(state);
 
     /* 5. เริ่ม Server */

@@ -18,7 +18,7 @@ import {
   Check,
   X,
 } from "lucide-react";
-import { Timeline } from "../components";
+import { Timeline, AssetPool } from "../components";
 import { toast } from "../lib/swal";
 
 export const EditorPage: React.FC = () => {
@@ -165,32 +165,8 @@ export const EditorPage: React.FC = () => {
       {/* Main Grid Area */}
       <div className="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
         {/* Left: Media Pool */}
-        <div className="col-span-3 border-r border-border flex flex-col bg-card">
-          <div className="p-3 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <Layers className="w-4 h-4" /> Assets
-            </h2>
-            <button className="p-1 hover:bg-muted rounded">
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-2">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-2 top-2 text-muted-foreground" />
-              <input
-                placeholder="Search assets..."
-                className="w-full bg-input border border-border rounded pl-8 pr-2 py-1 text-sm outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 text-center">
-            <div className="border-2 border-dashed border-border rounded-lg py-10">
-              <p className="text-sm text-muted-foreground">No assets yet.</p>
-              <button className="mt-2 text-xs text-primary hover:underline">
-                Upload media
-              </button>
-            </div>
-          </div>
+        <div className="col-span-3 border-r border-border bg-card">
+          <AssetPool />
         </div>
 
         {/* Center: Video Preview */}
