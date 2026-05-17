@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/axios";
-import type { TimelineData } from "../types";
 import { useProjectStore } from "../stores/projectStore";
+import { usePlaybackStore } from "../stores/playbackStore";
+import { useUIStore } from "../stores/uiStore";
 import {
   ChevronLeft,
   Play,
+  Pause,
   SkipBack,
   SkipForward,
   Settings,
@@ -15,43 +17,84 @@ import {
   X,
 } from "lucide-react";
 import { Timeline, AssetPool } from "../components";
+import { VideoPlayer } from "../components/player/VideoPlayer";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { toast } from "../lib/swal";
 
 export const EditorPage: React.FC = () => {
+  useKeyboardShortcuts();
+
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");
 
-  const { currentProject, setTimeline, currentTimeMs, updateProjectNameLocal } =
-    useProjectStore();
+  const {
+    currentProject,
+    loadProject,
+    updateProjectNameLocal,
+    tracks,
+    assets,
+  } = useProjectStore();
+  const { isPlaying, currentTimeMs, play, pause, seek } = usePlaybackStore();
+  const { selectedClipIds } = useUIStore();
+
+  /* 1. Global Clock for Playhead movement */
+  useEffect(() => {
+    let animationFrameId: number;
+    let lastTime = performance.now();
+
+    const update = () => {
+      const now = performance.now();
+      const delta = now - lastTime;
+      lastTime = now;
+
+      if (isPlaying) {
+        /* ใช้ฟังก์ชันอัปเดตแบบ functional เพื่อเลี่ยงการพึ่งพา currentTimeMs ใน dependency array */
+        usePlaybackStore
+          .getState()
+          .seek(usePlaybackStore.getState().currentTimeMs + delta);
+      }
+      animationFrameId = requestAnimationFrame(update);
+    };
+
+    animationFrameId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [isPlaying]);
+
+  /* 2. Determine Active Clip under Playhead for Preview */
+  const activeClipData = useMemo(() => {
+    /* เรียงลำดับแทร็กวิดีโอ (Video 2 อยู่บนสุด มีความสำคัญกว่า Video 1) */
+    const videoTracks = tracks
+      .filter((t) => t.type.toLowerCase() === "video")
+      .sort((a, b) => b.label.localeCompare(a.label));
+
+    for (const track of videoTracks) {
+      const clip = track.clips.find(
+        (c) =>
+          currentTimeMs >= c.track_position_ms &&
+          currentTimeMs < c.track_position_ms + c.duration_ms,
+      );
+
+      if (clip) {
+        const asset = assets.find((a) => a.id === clip.asset_id);
+        if (asset?.url) {
+          /* คำนวณเวลาในไฟล์วิดีโอจริง: เวลาปัจจุบัน - จุดเริ่มบนแทร็ก + จุดเริ่มในวิดีโอ */
+          const internalTimeMs =
+            currentTimeMs - clip.track_position_ms + clip.in_point_ms;
+          return { url: asset.url, timeMs: internalTimeMs };
+        }
+      }
+    }
+    return null;
+  }, [tracks, assets, currentTimeMs]);
 
   useEffect(() => {
     if (id) {
-      fetchTimeline(id);
+      loadProject(id).then(() => setLoading(false));
     }
   }, [id]);
-
-  useEffect(() => {
-    if (currentProject) {
-      setTempName(currentProject.name);
-    }
-  }, [currentProject]);
-
-  const fetchTimeline = async (projectId: string) => {
-    try {
-      const response = await api.get<TimelineData>(
-        `/projects/${projectId}/timeline`,
-      );
-      setTimeline(response.data);
-    } catch (err) {
-      console.error("Failed to load timeline", err);
-      navigate("/dashboard");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleNameUpdate = async () => {
     if (!id || !tempName.trim() || tempName === currentProject?.name) {
@@ -168,20 +211,29 @@ export const EditorPage: React.FC = () => {
         {/* Center: Video Preview */}
         <div className="col-span-6 bg-black flex flex-col relative">
           <div className="flex-1 flex items-center justify-center p-8">
-            <div className="aspect-video bg-zinc-900 w-full shadow-2xl flex items-center justify-center border border-zinc-800">
-              <div className="text-zinc-700 text-lg italic">
-                Preview Monitor
-              </div>
-            </div>
+            <VideoPlayer
+              src={activeClipData?.url}
+              offsetMs={activeClipData?.timeMs}
+            />
           </div>
 
           {/* Playback Controls */}
           <div className="h-16 bg-card border-t border-border flex items-center justify-center gap-6">
-            <button className="p-2 hover:bg-muted rounded-full transition-colors">
+            <button
+              onClick={() => seek(0)}
+              className="p-2 hover:bg-muted rounded-full transition-colors"
+            >
               <SkipBack className="w-5 h-5" />
             </button>
-            <button className="p-3 bg-primary text-primary-foreground rounded-full hover:opacity-90 shadow-lg">
-              <Play className="w-6 h-6 fill-current" />
+            <button
+              onClick={isPlaying ? pause : play}
+              className="p-3 bg-primary text-primary-foreground rounded-full hover:opacity-90 shadow-lg"
+            >
+              {isPlaying ? (
+                <Pause className="w-6 h-6 fill-current" />
+              ) : (
+                <Play className="w-6 h-6 fill-current" />
+              )}
             </button>
             <button className="p-2 hover:bg-muted rounded-full transition-colors">
               <SkipForward className="w-5 h-5" />

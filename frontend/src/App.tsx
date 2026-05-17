@@ -1,9 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { LoginPage, DashboardPage, EditorPage } from './pages';
-import { ProtectedRoute } from './components';
-import { useEffect } from 'react';
-import { useAuthStore } from './stores/authStore';
-import './App.css';
+import { LoginPage, DashboardPage, EditorPage } from "./pages";
+import { ProtectedRoute } from "./components";
+import { useEffect } from "react";
+import { useAuthStore } from "./stores/authStore";
+import "./App.css";
 
 function App() {
   const fetchMe = useAuthStore((state) => state.fetchMe);

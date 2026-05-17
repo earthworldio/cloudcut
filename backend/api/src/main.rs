@@ -3,12 +3,13 @@ mod middleware;
 mod error;
 
 use axum::{
-    routing::{get, post, patch},
+    routing::{get, post, patch, delete},
     Router,
     extract::FromRef,
 };
 use handlers::auth::{register, login, me};
-use handlers::projects::{list_projects, create_project, get_timeline, update_project};
+use handlers::projects::{list_projects, create_project, get_timeline, update_project, update_clip, delete_clip, split_clip, create_export, create_track, create_clip};
+use handlers::assets::{get_presigned_url, confirm_upload, list_assets};
 use shared::establish_connection;
 use std::net::SocketAddr;
 use tower_http::cors::{CorsLayer, Any};
@@ -102,16 +103,16 @@ async fn main() {
         .route("/projects", get(list_projects).post(create_project))
         .route("/projects/:id", patch(update_project).get(get_timeline))
         .route("/projects/:id/timeline", get(get_timeline))
-        .route("/projects/:id/tracks", post(handlers::projects::create_track))
-        .route("/projects/:id/clips", post(handlers::projects::create_clip))
-        .route("/projects/:id/clips/:clip_id", post(handlers::projects::update_clip))
-        .route("/projects/:id/clips/:clip_id/split", post(handlers::projects::split_clip))
-        .route("/projects/:id/exports", post(handlers::projects::create_export))
+        .route("/projects/:id/tracks", post(create_track))
+        .route("/projects/:id/clips", post(create_clip))
+        .route("/projects/:id/clips/:clip_id", patch(update_clip).delete(delete_clip))
+        .route("/projects/:id/clips/:clip_id/split", post(split_clip))
+        .route("/projects/:id/exports", post(create_export))
         
         /* Asset Routes */
-        .route("/assets/presigned-url", post(handlers::assets::get_presigned_url))
-        .route("/assets/confirm-upload", post(handlers::assets::confirm_upload))
-        .route("/assets", get(handlers::assets::list_assets));
+        .route("/assets/presigned-url", post(get_presigned_url))
+        .route("/assets/confirm-upload", post(confirm_upload))
+        .route("/assets", get(list_assets));
 
     let app = Router::new()
         .nest("/api", api_routes)

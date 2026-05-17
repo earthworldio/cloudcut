@@ -167,9 +167,16 @@ export const AssetPool: React.FC = () => {
               <div
                 key={asset.id}
                 className="group relative aspect-video bg-muted rounded border border-border overflow-hidden cursor-move hover:border-primary transition-colors"
-                draggable
+                draggable={asset.status === "ready"}
                 onDragStart={(e) => {
-                  e.dataTransfer.setData("asset", JSON.stringify(asset));
+                  if (asset.status !== "ready") return;
+                  e.dataTransfer.setData(
+                    "application/json",
+                    JSON.stringify({
+                      assetId: asset.id,
+                      durationMs: asset.metadata?.durationMs || 5000,
+                    }),
+                  );
                 }}
               >
                 {/* Preview Content */}

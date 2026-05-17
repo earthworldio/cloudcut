@@ -123,6 +123,29 @@ pub async fn update_clip(
     Ok(Json(clip))
 }
 
+/* 5. ลบ Clip (Soft Delete) */
+pub async fn delete_clip(
+    State(pool): State<PgPool>,
+    Claims(user_id): Claims,
+    Path((project_id, clip_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, AppError> {
+    check_project_access(&pool, project_id, user_id).await?;
+
+    let result = sqlx::query(
+        "UPDATE clips SET deleted_at = NOW() WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL"
+    )
+    .bind(clip_id)
+    .bind(project_id)
+    .execute(&pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Clip not found".into()));
+    }
+
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
 /* 4. Split Clip (Atomic Transaction) */
 pub async fn split_clip(
     State(pool): State<PgPool>,
