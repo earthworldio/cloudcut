@@ -51,4 +51,23 @@ export const alert = {
       },
     });
   },
+  confirm: (title: string, message: string) => {
+    return MySwal.fire({
+      icon: "warning",
+      title: <span className="text-xl font-bold">{title}</span>,
+      html: <span className="text-sm text-zinc-400">{message}</span>,
+      background: "#18181b",
+      color: "#ffffff",
+      showCancelButton: true,
+      confirmButtonText: "Confirm",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#ef4444", /* red-500 */
+      cancelButtonColor: "#3f3f46", /* zinc-700 */
+      customClass: {
+        popup: "rounded-lg border border-zinc-800 shadow-2xl",
+        confirmButton: "px-6 py-2 text-sm font-medium rounded-md",
+        cancelButton: "px-6 py-2 text-sm font-medium rounded-md",
+      },
+    });
+  },
 };

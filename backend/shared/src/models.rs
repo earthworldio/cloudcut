@@ -336,6 +336,10 @@ pub enum JobPayload {
         #[serde(default)]
         attempts: u32,
     },
+    #[serde(rename = "cleanup_expired_files")]
+    CleanupExpiredFiles {
+        run_id: Uuid,
+    },
 }
 
 /* สำหรับส่งข้อมูล Timeline แบบรวมศูนย์ (Unified Structure) */

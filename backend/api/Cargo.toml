@@ -18,6 +18,7 @@ uuid = { version = "1.0", features = ["serde", "v4", "v7"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 anyhow = "1"
+tracing = "0.1"
 validator = { version = "0.18", features = ["derive"] }
 aws-config = "1"
 aws-sdk-s3 = "1"

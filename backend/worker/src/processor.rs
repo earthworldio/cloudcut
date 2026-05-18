@@ -36,6 +36,36 @@ pub async fn handle_job(
     let job: JobPayload = serde_json::from_str(payload_str)
         .context("Failed to parse job JSON")?;
 
+    /* 1. Idempotency Check */
+    let idempotency_key = match &job {
+        JobPayload::ExtractMetadata { idempotency_key, .. } => Some(idempotency_key),
+        JobPayload::GenerateProxy { idempotency_key, .. } => Some(idempotency_key),
+        JobPayload::GenerateThumbnails { idempotency_key, .. } => Some(idempotency_key),
+        JobPayload::ExtractWaveform { idempotency_key, .. } => Some(idempotency_key),
+        JobPayload::RenderExport { idempotency_key, .. } => Some(idempotency_key),
+        _ => None,
+    };
+
+    if let Some(key) = idempotency_key {
+        let mut conn = redis.get_multiplexed_async_connection().await?;
+        let redis_key = format!("idempotency:{}", key);
+        
+        /* SETNX with 24 hour TTL */
+        let set_res: bool = redis::cmd("SET")
+            .arg(&redis_key)
+            .arg("processing")
+            .arg("NX")
+            .arg("EX")
+            .arg(86400)
+            .query_async(&mut conn)
+            .await?;
+
+        if !set_res {
+            info!(key = %key, "Job already processed or processing, skipping (idempotency)");
+            return Ok(());
+        }
+    }
+
     let result = match job.clone() {
         JobPayload::ExtractMetadata { asset_id, input_url, idempotency_key, .. } => {
             handle_extract_metadata(asset_id, input_url, idempotency_key, db, redis, s3).await
@@ -46,11 +76,14 @@ pub async fn handle_job(
         JobPayload::GenerateThumbnails { asset_id, input_url, idempotency_key, .. } => {
             handle_generate_thumbnails(asset_id, input_url, idempotency_key, db, s3).await
         }
+        JobPayload::ExtractWaveform { asset_id, input_url, idempotency_key, .. } => {
+            handle_extract_waveform(asset_id, input_url, idempotency_key, db, s3).await
+        }
         JobPayload::RenderExport { project_id, export_id, idempotency_key, .. } => {
-            crate::export_pipeline::handle_render_export(project_id, export_id, idempotency_key, db, s3).await
+            crate::export_pipeline::handle_render_export(project_id, export_id, idempotency_key, db, redis, s3).await
         }
         _ => {
-            warn!("Unhandled job type");
+            info!("Unhandled job type or cleanup job");
             Ok(())
         }
     };
@@ -71,7 +104,12 @@ async fn handle_retry(mut job: JobPayload, error_msg: String, redis: &redis::Cli
         JobPayload::GenerateThumbnails { attempts, .. } => *attempts,
         JobPayload::ExtractWaveform { attempts, .. } => *attempts,
         JobPayload::RenderExport { attempts, .. } => *attempts,
+        JobPayload::CleanupExpiredFiles { .. } => 0, /* No retry for cleanup */
     };
+
+    if let JobPayload::CleanupExpiredFiles { .. } = job {
+        return Ok(());
+    }
 
     if current_attempts < max_attempts {
         /* Increment attempts */
@@ -81,6 +119,7 @@ async fn handle_retry(mut job: JobPayload, error_msg: String, redis: &redis::Cli
             JobPayload::GenerateThumbnails { attempts, .. } => *attempts += 1,
             JobPayload::ExtractWaveform { attempts, .. } => *attempts += 1,
             JobPayload::RenderExport { attempts, .. } => *attempts += 1,
+            JobPayload::CleanupExpiredFiles { .. } => {}
         }
 
         /* Calculate delay: 2^attempt * 1s */
@@ -186,9 +225,16 @@ async fn handle_extract_metadata(
         idempotency_key: format!("{}-thumb", idempotency_key),
         attempts: 0,
     };
+    let waveform_job = JobPayload::ExtractWaveform {
+        asset_id,
+        input_url: input_url.clone(),
+        idempotency_key: format!("{}-waveform", idempotency_key),
+        attempts: 0,
+    };
 
     let _: () = conn.lpush("queue:video_pipeline", serde_json::to_string(&proxy_job)?).await?;
     let _: () = conn.lpush("queue:video_pipeline", serde_json::to_string(&thumb_job)?).await?;
+    let _: () = conn.lpush("queue:video_pipeline", serde_json::to_string(&waveform_job)?).await?;
 
     info!(asset_id = %asset_id, "Metadata extracted, pushed sub-jobs");
     Ok(())
@@ -277,6 +323,91 @@ async fn handle_generate_thumbnails(
     Ok(())
 }
 
+async fn handle_extract_waveform(
+    asset_id: Uuid,
+    input_url: String,
+    _idempotency_key: String,
+    db: &PgPool,
+    s3: &aws_sdk_s3::Client,
+) -> Result<()> {
+    info!(asset_id = %asset_id, "Extracting waveform");
+    let file_url = get_presigned_url(s3, &input_url).await?;
+    let temp_raw = format!("/tmp/waveform_{}.raw", asset_id);
+
+    /* 1. Extract raw audio (16-bit signed, mono, 44.1kHz) */
+    let output = Command::new("ffmpeg")
+        .args([
+            "-y", "-i", &file_url,
+            "-ac", "1",
+            "-ar", "44100",
+            "-filter:a", "aformat=sample_fmts=s16",
+            "-f", "s16le",
+            &temp_raw,
+        ])
+        .output()
+        .context("Failed to execute ffmpeg for waveform")?;
+
+    if !output.status.success() {
+        error!("ffmpeg waveform failed: {}", String::from_utf8_lossy(&output.stderr));
+        return Err(anyhow::anyhow!("ffmpeg waveform failed"));
+    }
+
+    /* 2. Read raw file and extract peaks */
+    use std::io::Read;
+    let mut file = std::fs::File::open(&temp_raw)?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+
+    /* 16-bit = 2 bytes per sample */
+    let samples: Vec<i16> = buffer
+        .chunks_exact(2)
+        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect();
+
+    /* Downsample to ~500 points */
+    let target_points = 500;
+    let chunk_size = (samples.len() / target_points).max(1);
+    let mut peaks = Vec::new();
+
+    for chunk in samples.chunks(chunk_size) {
+        let mut min = 0i16;
+        let mut max = 0i16;
+        for &sample in chunk {
+            if sample < min { min = sample; }
+            if sample > max { max = sample; }
+        }
+        /* Normalize to -1.0 to 1.0 */
+        peaks.push(vec![
+            min as f32 / 32768.0,
+            max as f32 / 32768.0,
+        ]);
+    }
+
+    let waveform_json = serde_json::json!({
+        "sample_rate": 44100,
+        "channels": 1,
+        "peaks": peaks
+    });
+
+    /* 3. Save as AssetVariant (JSON data) */
+    /* ในโปรเจกต์นี้เราอาจจะเก็บ JSON ลงใน DB เลยหรือลง S3 */
+    /* ตาม Spec 3.5 ให้เก็บเป็น JSON array */
+    /* เราจะเก็บลง asset_variants.metadata หรือลง url เป็น json string? */
+    /* ตามโมเดล asset_variants มีฟิลด์ metadata: Value */
+    
+    sqlx::query("INSERT INTO asset_variants (asset_id, type, url, metadata) VALUES ($1, $2, $3, $4)")
+        .bind(asset_id)
+        .bind("waveform_data")
+        .bind("") /* URL ว่างเพราะเก็บใน metadata */
+        .bind(waveform_json)
+        .execute(db)
+        .await?;
+
+    check_and_finalize_asset(db, asset_id).await?;
+    let _ = std::fs::remove_file(temp_raw);
+    Ok(())
+}
+
 /* Helpers */
 
 async fn get_presigned_url(s3: &aws_sdk_s3::Client, key: &str) -> Result<String> {
@@ -306,11 +437,11 @@ async fn add_asset_variant(db: &PgPool, asset_id: Uuid, kind: &str, url: &str) -
 }
 
 async fn check_and_finalize_asset(db: &PgPool, asset_id: Uuid) -> Result<()> {
-    /* เช็คว่ามีทั้ง proxy และ thumbnail หรือยัง */
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM asset_variants WHERE asset_id = $1 AND type IN ('proxy', 'thumbnail')")
+    /* เช็คว่ามีทั้ง proxy, thumbnail และ waveform_data หรือยัง */
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM asset_variants WHERE asset_id = $1 AND type IN ('proxy', 'thumbnail', 'waveform_data')")
         .bind(asset_id).fetch_one(db).await?;
     
-    if count.0 >= 2 {
+    if count.0 >= 3 {
         update_asset_status(db, asset_id, "ready").await?;
         info!(asset_id = %asset_id, "Asset is now READY");
     }

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Timeline, AssetPool } from "../components";
 import { VideoPlayer } from "../components/player/VideoPlayer";
+import { ExportModal } from "../components/ExportModal";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { toast } from "../lib/swal";
 
@@ -29,6 +30,7 @@ export const EditorPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const {
     currentProject,
@@ -195,7 +197,10 @@ export const EditorPage: React.FC = () => {
           <button className="flex items-center gap-2 px-3 py-1 bg-secondary text-secondary-foreground text-sm rounded hover:opacity-90">
             <Settings className="w-4 h-4" /> Settings
           </button>
-          <button className="flex items-center gap-2 px-3 py-1 bg-primary text-primary-foreground text-sm font-semibold rounded hover:opacity-90">
+          <button
+            onClick={() => setShowExportModal(true)}
+            className="flex items-center gap-2 px-3 py-1 bg-primary text-primary-foreground text-sm font-semibold rounded hover:opacity-90"
+          >
             <Download className="w-4 h-4" /> Export
           </button>
         </div>
@@ -264,6 +269,11 @@ export const EditorPage: React.FC = () => {
       <div className="h-1/3 border-t border-border flex flex-col bg-card/50">
         <Timeline />
       </div>
+
+      {/* Export Modal */}
+      {showExportModal && id && (
+        <ExportModal projectId={id} onClose={() => setShowExportModal(false)} />
+      )}
     </div>
   );
 };

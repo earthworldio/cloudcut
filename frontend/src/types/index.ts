@@ -53,6 +53,11 @@ export interface Clip {
   duration_ms: number;
   transform: ClipTransform;
   version: number;
+  waveform?: {
+    peaks: number[][];
+    sample_rate: number;
+    channels: number;
+  };
 }
 
 export interface ClipTransform {

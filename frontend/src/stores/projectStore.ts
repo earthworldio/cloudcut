@@ -18,9 +18,12 @@ interface ProjectState {
   moveClip: (clipId: string, positionMs: number, trackId: string) => Promise<void>;
   trimClip: (clipId: string, inPointMs: number, outPointMs: number) => Promise<void>;
   splitClip: (clipId: string, atTimelineTimeMs: number) => Promise<void>;
+  splitAllClipsAt: (atTimelineTimeMs: number) => Promise<void>;
   deleteClips: (clipIds: string[]) => Promise<void>;
   
   updateProjectNameLocal: (name: string) => void;
+  deleteProject: (projectId: string) => Promise<void>;
+  deleteWorkspace: (workspaceId: string) => Promise<void>;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -59,9 +62,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const projectId = get().currentProject?.id;
     if (!projectId) return;
 
-    const outPointMs = Math.min(5000, assetDurationMs);
-    const asset = get().assets.find(a => a.id === assetId);
-    
+    /* Use full duration if available, otherwise default to 5000ms */
+    const durationMs = assetDurationMs || 5000;
+    const asset = get().assets.find((a) => a.id === assetId);
+
     try {
       await api.post(`/projects/${projectId}/clips`, {
         asset_id: assetId,
@@ -69,8 +73,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         name: asset?.metadata?.filename || "New Clip",
         track_position_ms: Math.max(0, positionMs),
         in_point_ms: 0,
-        out_point_ms: outPointMs,
-        duration_ms: outPointMs
+        out_point_ms: durationMs,
+        duration_ms: durationMs,
       });
       get().loadProject(projectId);
     } catch (err) {
@@ -156,6 +160,37 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
+  splitAllClipsAt: async (atTimelineTimeMs) => {
+    const projectId = get().currentProject?.id;
+    if (!projectId) return;
+
+    const tracks = get().tracks;
+    const clipsToSplit = tracks.flatMap((t) => t.clips || []).filter((clip) => {
+      const start = clip.track_position_ms;
+      const end = clip.track_position_ms + clip.duration_ms;
+      /* Buffer of 1ms to avoid precision issues */
+      return atTimelineTimeMs > start + 1 && atTimelineTimeMs < end - 1;
+    });
+
+    console.log("Global Split triggered at:", atTimelineTimeMs, "Found clips:", clipsToSplit.length);
+
+    if (clipsToSplit.length === 0) return;
+
+    try {
+      /* Split all clips sequentially to avoid DB lock/race conditions in backend */
+      for (const clip of clipsToSplit) {
+        await api.post(`/projects/${projectId}/clips/${clip.id}/split`, {
+          split_time_ms: Math.floor(atTimelineTimeMs),
+        });
+      }
+
+      /* Reload project to get final state */
+      await get().loadProject(projectId);
+    } catch (err) {
+      console.error("Failed to split all clips", err);
+    }
+  },
+
   deleteClips: async (clipIds) => {
     const projectId = get().currentProject?.id;
     if (!projectId || clipIds.length === 0) return;
@@ -184,7 +219,31 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  updateProjectNameLocal: (name) => set((state) => ({
+  updateProjectNameLocal: (name: string) => set((state) => ({
     currentProject: state.currentProject ? { ...state.currentProject, name } : null
-  }))
+  })),
+
+  deleteProject: async (projectId) => {
+    try {
+      await api.delete(`/projects/${projectId}`);
+      /* If the deleted project is the current one, clear it */
+      if (get().currentProject?.id === projectId) {
+        set({ currentProject: null, tracks: [] });
+      }
+    } catch (err) {
+      console.error("Failed to delete project", err);
+      throw err;
+    }
+  },
+
+  deleteWorkspace: async (workspaceId) => {
+    try {
+      await api.delete(`/workspaces/${workspaceId}`);
+      /* Clear state since workspace is gone */
+      set({ currentProject: null, tracks: [], assets: [] });
+    } catch (err) {
+      console.error("Failed to delete workspace", err);
+      throw err;
+    }
+  }
 }));

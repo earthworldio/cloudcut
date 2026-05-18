@@ -174,6 +174,7 @@ export const AssetPool: React.FC = () => {
                     "application/json",
                     JSON.stringify({
                       assetId: asset.id,
+                      type: asset.type,
                       durationMs: asset.metadata?.durationMs || 5000,
                     }),
                   );

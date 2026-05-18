@@ -2,14 +2,23 @@ import React from "react";
 import { useProjectStore } from "../stores/projectStore";
 import { usePlaybackStore } from "../stores/playbackStore";
 import { useUIStore } from "../stores/uiStore";
-import { ZoomIn, ZoomOut, Scissors, Trash2, Move } from "lucide-react";
-import type { Clip } from "../types";
+import {
+  ZoomIn,
+  ZoomOut,
+  Scissors,
+  Trash2,
+  Move,
+  X as CloseIcon,
+} from "lucide-react";
+import { toast } from "../lib/swal";
+import type { Clip, Track } from "../types";
 import { TimelineRuler } from "./timeline/TimelineRuler";
 import { Playhead } from "./timeline/Playhead";
 
 export const Timeline: React.FC = () => {
-  const { tracks, addClip, moveClip, splitClip, deleteClips } =
+  const { tracks, addClip, moveClip, splitClip, splitAllClipsAt, deleteClips } =
     useProjectStore();
+
   const { zoomLevel, setZoom, selectedClipIds, selectClip } = useUIStore();
   const { currentTimeMs, seek } = usePlaybackStore();
 
@@ -22,22 +31,7 @@ export const Timeline: React.FC = () => {
   };
 
   const handleSplit = () => {
-    const selectedId = selectedClipIds[0];
-
-    if (!selectedId) return;
-
-    const allClips = tracks.flatMap((t) => t.clips);
-    const clip = allClips.find((c) => c.id === selectedId);
-
-    if (clip) {
-      const start = clip.track_position_ms;
-      const end = clip.track_position_ms + clip.duration_ms;
-
-      /* Check if playhead is within the clip bounds */
-      if (currentTimeMs > start && currentTimeMs < end) {
-        splitClip(clip.id, currentTimeMs);
-      }
-    }
+    splitAllClipsAt(currentTimeMs);
   };
 
   const handleDelete = async () => {
@@ -48,6 +42,11 @@ export const Timeline: React.FC = () => {
   };
 
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    /* Deselect clips when clicking empty timeline area */
+    if (e.target === e.currentTarget) {
+      useUIStore.getState().deselectAll();
+    }
+
     /* Calculate time based on click position relative to the scrollable container */
     const rect = e.currentTarget.getBoundingClientRect();
     const x =
@@ -63,39 +62,98 @@ export const Timeline: React.FC = () => {
 
   const handleDragOver = (e: React.DragEvent, trackId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
     if (dragOverTrackId !== trackId) {
       setDragOverTrackId(trackId);
     }
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleGlobalDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    setDragOverTrackId(null);
   };
 
   const handleDrop = async (e: React.DragEvent, trackId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOverTrackId(null);
 
     const rect = e.currentTarget.getBoundingClientRect();
-    let trackPositionMs = ((e.clientX - rect.left) / zoomLevel) * 1000;
+    /* Calculate position relative to the track area (clientX - track_label_width - rect_left) */
+    const x = e.clientX - rect.left - 160;
+    let trackPositionMs = (x / zoomLevel) * 1000;
+    if (trackPositionMs < 0) trackPositionMs = 0;
+
+    console.log(
+      "Drop triggered on track:",
+      trackId,
+      "at x:",
+      x,
+      "ms:",
+      trackPositionMs,
+    );
 
     try {
       const rawData = e.dataTransfer.getData("application/json");
       if (!rawData) return;
 
       const data = JSON.parse(rawData);
-      const track = tracks.find((t) => t.id === trackId);
+      const track = tracks.find((t: any) => t.id === trackId);
+      if (!track) return;
 
-      /* Logic: If dropping into empty space or specifically requested, snap to end of existing clips */
-      if (track) {
-        if (track.clips.length === 0) {
-          /* 1. If track is empty, go to 00:00:00 */
+      if (data.assetId) {
+        /* Dropping new asset */
+        const asset = useProjectStore
+          .getState()
+          .assets.find((a: any) => a.id === data.assetId);
+
+        if (!asset) {
+          console.error("Asset not found in store:", data.assetId);
+          return;
+        }
+
+        console.log(
+          "Dropping asset:",
+          asset.type,
+          "on track:",
+          track.type,
+          "Status:",
+          asset.status,
+        );
+
+        /* Validation: Check asset type vs track type (case-insensitive and trimmed) */
+        const aType = (data.type || asset.type)?.toLowerCase().trim();
+        const tType = track.type?.toLowerCase().trim();
+
+        if (!aType || !tType) {
+          console.error("Missing type info:", { aType, tType });
+          return;
+        }
+
+        if (tType === "video" && aType !== "video") {
+          toast.fire({
+            icon: "warning",
+            title: "Invalid track",
+            text: `Please drop video assets on a video track. (Asset is ${aType})`,
+          });
+          return;
+        }
+
+        if (tType === "audio" && aType !== "audio") {
+          toast.fire({
+            icon: "warning",
+            title: "Invalid track",
+            text: `Please drop audio assets on an audio track. (Asset is ${aType})`,
+          });
+          return;
+        }
+
+        /* Logic: Snap to end of existing clips if dropped near/after */
+        const clips = track.clips || [];
+        if (clips.length === 0) {
           trackPositionMs = 0;
         } else {
-          /* 2. Check if we are dropping far after the last clip */
-          const sortedClips = [...track.clips].sort(
+          const sortedClips = [...clips].sort(
             (a, b) =>
               a.track_position_ms +
               a.duration_ms -
@@ -104,16 +162,47 @@ export const Timeline: React.FC = () => {
           const lastClip = sortedClips[sortedClips.length - 1];
           const lastClipEnd = lastClip.track_position_ms + lastClip.duration_ms;
 
-          /* If dropping near or after the end of the last clip, snap to it */
           if (trackPositionMs > lastClipEnd - 100) {
             trackPositionMs = lastClipEnd;
           }
         }
-      }
 
-      if (data.assetId) {
-        /* Dropping new asset */
-        await addClip(data.assetId, trackId, trackPositionMs, data.durationMs);
+        if (aType === "video") {
+          /* 1. Place Video Clip on current track */
+          await addClip(
+            data.assetId,
+            trackId,
+            trackPositionMs,
+            data.durationMs,
+          );
+
+          /* 2. Find the first Audio track and place Audio Clip there at the same position */
+          const audioTrack = tracks.find(
+            (t: any) => t.type.toLowerCase().trim() === "audio",
+          );
+          if (audioTrack) {
+            await addClip(
+              data.assetId,
+              audioTrack.id,
+              trackPositionMs,
+              data.durationMs,
+            );
+          }
+        } else {
+          /* Regular drop for audio/image */
+          await addClip(
+            data.assetId,
+            trackId,
+            trackPositionMs,
+            data.durationMs,
+          );
+        }
+
+        /* Force reload project after adding clips to ensure UI updates */
+        const projectId = useProjectStore.getState().currentProject?.id;
+        if (projectId) {
+          await useProjectStore.getState().loadProject(projectId);
+        }
       } else if (data.clipId) {
         /* Moving existing clip */
         await moveClip(data.clipId, trackPositionMs, trackId);
@@ -177,6 +266,8 @@ export const Timeline: React.FC = () => {
       <div
         className="flex-1 overflow-auto relative bg-zinc-950/50"
         onClick={handleTimelineClick}
+        onDragOver={handleGlobalDragOver}
+        onDragLeave={() => setDragOverTrackId(null)}
       >
         <div className="min-w-max relative">
           {/* Ruler Area */}
@@ -188,7 +279,7 @@ export const Timeline: React.FC = () => {
           </div>
 
           {/* Tracks List */}
-          <div className="pb-20 relative">
+          <div className="pb-20 relative flex flex-col min-h-[300px]">
             {/* Playhead - Wrapped in a relative container that matches tracks width */}
             <div className="absolute inset-0 pointer-events-none z-40">
               <div className="ml-40 relative h-full">
@@ -196,48 +287,48 @@ export const Timeline: React.FC = () => {
               </div>
             </div>
 
-            {tracks.map((track) => (
+            {tracks.map((track: any) => (
               <div
                 key={track.id}
-                className={`h-20 border-b border-zinc-900/50 relative flex items-center group transition-colors ${
+                onDragOver={(e) => handleDragOver(e, track.id)}
+                onDrop={(e) => handleDrop(e, track.id)}
+                className={`h-[140px] border-b border-zinc-900/50 relative flex group transition-colors ${
                   dragOverTrackId === track.id
-                    ? "bg-white/10"
+                    ? "bg-white/40"
                     : "hover:bg-zinc-900/30"
                 }`}
               >
                 {/* Track Label Side */}
-                <div className="sticky left-0 w-40 h-full bg-zinc-900/90 border-r border-zinc-800 z-20 flex flex-col justify-center px-3 shadow-xl">
-                  <span className="text-xs font-medium truncate">
+                <div className="sticky left-0 w-40 h-full bg-zinc-900/90 border-r border-zinc-800 z-20 flex flex-col justify-center px-3 shadow-xl pointer-events-none">
+                  <span className="text-xs font-bold truncate text-zinc-100">
                     {track.label}
                   </span>
-                  <span className="text-[10px] text-zinc-500 uppercase">
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
                     {track.type}
                   </span>
                 </div>
 
                 {/* Clips Container */}
-                <div
-                  className="flex-1 h-full relative group/track"
-                  onDragOver={(e) => handleDragOver(e, track.id)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e, track.id)}
-                >
+                <div className="flex-1 h-full relative group/track">
                   {/* Drop Indicator Visual */}
                   <div
                     className={`absolute inset-0 pointer-events-none transition-colors ${
                       dragOverTrackId === track.id
-                        ? "bg-white/20"
+                        ? "bg-white/40"
                         : "bg-primary/0 group-hover/track:bg-primary/5"
                     }`}
                   />
 
-                  {track.clips.map((clip) => (
+                  {/* Render Clips */}
+                  {(track.clips || []).map((clip: Clip) => (
                     <TimelineClip
                       key={clip.id}
                       clip={clip}
+                      track={track}
                       zoomLevel={zoomLevel}
                       isSelected={selectedClipIds.includes(clip.id)}
                       onSelect={(additive) => selectClip(clip.id, additive)}
+                      onDelete={() => deleteClips([clip.id])}
                     />
                   ))}
                 </div>
@@ -252,20 +343,73 @@ export const Timeline: React.FC = () => {
 
 interface TimelineClipProps {
   clip: Clip;
+  track: Track;
   zoomLevel: number;
   isSelected: boolean;
   onSelect: (additive: boolean) => void;
+  onDelete: () => void;
 }
+
+const WaveformCanvas: React.FC<{
+  waveform: any;
+  width: number;
+  height: number;
+}> = ({ waveform, width, height }) => {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    /* Clear and setup DPI */
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    const peaks = waveform.peaks; /* [[min, max], ...] */
+    if (!peaks || peaks.length === 0) return;
+
+    ctx.fillStyle = "#3b82f6"; /* Blue waveform */
+    const barWidth = width / peaks.length;
+    const centerY = height / 2;
+
+    peaks.forEach((peak: number[], i: number) => {
+      const x = i * barWidth;
+      const min = peak[0] * centerY;
+      const max = peak[1] * centerY;
+
+      /* Draw vertical bar for this peak */
+      ctx.fillRect(x, centerY + min, Math.max(1, barWidth - 0.5), max - min);
+    });
+  }, [waveform, width, height]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ width: `${width}px`, height: `${height}px` }}
+    />
+  );
+};
 
 const TimelineClip: React.FC<TimelineClipProps> = ({
   clip,
+  track,
   zoomLevel,
   isSelected,
   onSelect,
+  onDelete,
 }) => {
   const widthPx = (clip.duration_ms / 1000) * zoomLevel;
   const leftPx = (clip.track_position_ms / 1000) * zoomLevel;
-  const seek = usePlaybackStore((state) => state.seek);
+  const seek = usePlaybackStore((state: any) => state.seek);
+  const assets = useProjectStore((state: any) => state.assets);
+  const asset = assets.find((a: any) => a.id === clip.asset_id);
+
+  const isVideo = track.type.toLowerCase() === "video";
 
   return (
     <div
@@ -283,22 +427,89 @@ const TimelineClip: React.FC<TimelineClipProps> = ({
         seek(clip.track_position_ms);
       }}
       className={`
-        absolute top-2 bottom-2 rounded border transition-all cursor-pointer overflow-hidden
+        absolute top-2 bottom-2 rounded border transition-all cursor-pointer overflow-hidden group/clip
         ${
           isSelected
-            ? "bg-blue-500/30 border-blue-400 ring-2 ring-blue-500/20 z-10"
-            : "bg-zinc-800 border-zinc-700 hover:bg-zinc-700 hover:border-zinc-600"
+            ? "border-white ring-2 ring-white/30 z-20 scale-[1.01]"
+            : "border-zinc-700 hover:border-zinc-500 z-10"
+        }
+        ${
+          isVideo
+            ? isSelected
+              ? "bg-blue-600 shadow-lg shadow-blue-500/40"
+              : "bg-blue-900/90"
+            : isSelected
+              ? "bg-emerald-600 shadow-lg shadow-emerald-500/40"
+              : "bg-emerald-900/90"
         }
       `}
       style={{ left: `${leftPx}px`, width: `${widthPx}px` }}
     >
-      <div className="px-2 py-1 text-[11px] font-medium truncate">
-        {clip.name}
+      {/* Video Thumbnail Preview (if available) */}
+      {isVideo && asset?.url && (
+        <div className="absolute inset-0 opacity-60 pointer-events-none">
+          <video
+            src={asset.url}
+            className="w-full h-full object-cover"
+            preload="metadata"
+            onLoadedMetadata={(e) => {
+              /* Seek to a representative frame (e.g., 1s or 10% of duration) */
+              e.currentTarget.currentTime = Math.min(
+                1,
+                e.currentTarget.duration * 0.1,
+              );
+            }}
+          />
+          {/* Overlay to make text more readable */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-transparent" />
+        </div>
+      )}
+
+      {/* Waveform Background for Audio */}
+      {!isVideo && clip.waveform && (
+        <div className="absolute inset-0 opacity-70 pointer-events-none flex items-center">
+          <WaveformCanvas
+            waveform={clip.waveform}
+            width={widthPx}
+            height={120}
+          />
+        </div>
+      )}
+
+      {/* Clip Label */}
+      <div className="relative z-10 px-2 py-1.5 flex flex-col justify-between h-full pointer-events-none">
+        <div className="flex items-start justify-between">
+          <span className="text-[10px] font-bold truncate text-white drop-shadow-md bg-black/60 px-1.5 py-0.5 rounded border border-white/10 max-w-[80%]">
+            {clip.name}
+          </span>
+
+          {/* Delete Button (X) - Only visible when selected or hovered */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className={`
+              p-1 rounded bg-red-500 text-white hover:bg-red-600 transition-all pointer-events-auto shadow-lg border border-red-400/50
+              ${isSelected ? "opacity-100 scale-100" : "opacity-0 scale-90 group-hover/clip:opacity-100 group-hover/clip:scale-100"}
+            `}
+            title="Remove Clip"
+          >
+            <CloseIcon className="w-3 h-3" />
+          </button>
+        </div>
+
+        {/* Clip Duration Text at Bottom */}
+        <div className="flex justify-end">
+          <span className="text-[9px] font-medium text-white/70 bg-black/40 px-1 rounded">
+            {(clip.duration_ms / 1000).toFixed(1)}s
+          </span>
+        </div>
       </div>
 
       {/* Trim Handles */}
-      <div className="absolute left-0 top-0 bottom-0 w-1 hover:bg-white/20 cursor-ew-resize" />
-      <div className="absolute right-0 top-0 bottom-0 w-1 hover:bg-white/20 cursor-ew-resize" />
+      <div className="absolute left-0 top-0 bottom-0 w-2 hover:bg-white/40 cursor-ew-resize z-20 pointer-events-auto" />
+      <div className="absolute right-0 top-0 bottom-0 w-2 hover:bg-white/40 cursor-ew-resize z-20 pointer-events-auto" />
     </div>
   );
 };

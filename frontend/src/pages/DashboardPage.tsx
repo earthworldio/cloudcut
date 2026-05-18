@@ -2,8 +2,17 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import type { Project } from "../types";
-import { Plus, Video, LogOut, Layout } from "lucide-react";
+import {
+  Plus,
+  Video,
+  LogOut,
+  Layout,
+  Trash2,
+  X,
+  AlertTriangle,
+} from "lucide-react";
 import { useAuthStore } from "../stores/authStore";
+import { useProjectStore } from "../stores/projectStore";
 import { alert, toast } from "../lib/swal";
 
 export const DashboardPage: React.FC = () => {
@@ -11,6 +20,7 @@ export const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+  const { deleteProject, deleteWorkspace } = useProjectStore();
 
   useEffect(() => {
     fetchProjects();
@@ -27,20 +37,75 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleDeleteProject = async (
+    e: React.MouseEvent,
+    projectId: string,
+  ) => {
+    e.stopPropagation();
+    const result = await alert.confirm(
+      "Delete Project?",
+      "All assets and timeline data will be permanently removed. This cannot be undone.",
+    );
+
+    if (result.isConfirmed) {
+      try {
+        await deleteProject(projectId);
+        toast.fire({
+          icon: "success",
+          title: "Project deleted",
+        });
+        fetchProjects();
+      } catch (err) {
+        toast.fire({
+          icon: "error",
+          title: "Failed to delete project",
+        });
+      }
+    }
+  };
+
+  const handleDeleteWorkspace = async () => {
+    if (!user?.workspace_id) return;
+
+    const result = await alert.confirm(
+      "Delete Workspace?",
+      "All projects and data in this workspace will be PERMANENTLY DELETED. This is a destructive action.",
+    );
+
+    if (result.isConfirmed) {
+      try {
+        await deleteWorkspace(user.workspace_id);
+        toast.fire({
+          icon: "success",
+          title: "Workspace deleted",
+        });
+        logout(); // Logout after workspace deletion
+      } catch (err) {
+        toast.fire({
+          icon: "error",
+          title: "Failed to delete workspace",
+        });
+      }
+    }
+  };
+
   const createProject = async () => {
     try {
       /* ดึงข้อมูล user ล่าสุดจาก store (ซึ่งมี workspace_id แล้ว) */
       const currentUser = useAuthStore.getState().user;
-      
+
       if (!currentUser?.workspace_id) {
-        alert.error('No Workspace', 'We could not find an active workspace for your account. Please try logging in again.');
+        alert.error(
+          "No Workspace",
+          "We could not find an active workspace for your account. Please try logging in again.",
+        );
         return;
       }
 
-      const newProject = await api.post<Project>('/projects', {
-        name: 'New Project ' + new Date().toLocaleTimeString(),
+      const newProject = await api.post<Project>("/projects", {
+        name: "New Project " + new Date().toLocaleTimeString(),
         workspace_id: currentUser.workspace_id,
-        description: 'Created from dashboard',
+        description: "Created from dashboard",
       });
 
       toast.fire({
@@ -72,9 +137,18 @@ export const DashboardPage: React.FC = () => {
             <span className="text-sm text-muted-foreground">
               Welcome, {user?.name}
             </span>
+            <div className="h-6 w-px bg-border mx-2" />
+            <button
+              onClick={handleDeleteWorkspace}
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-500/10 rounded transition-colors"
+              title="Delete Workspace"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete Workspace
+            </button>
             <button
               onClick={logout}
               className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground"
+              title="Logout"
             >
               <LogOut className="w-5 h-5" />
             </button>
@@ -128,8 +202,17 @@ export const DashboardPage: React.FC = () => {
               <div
                 key={project.id}
                 onClick={() => navigate(`/projects/${project.id}`)}
-                className="group bg-card border border-border rounded-lg overflow-hidden hover:border-primary/50 transition-all cursor-pointer shadow-sm hover:shadow-md"
+                className="group bg-card border border-border rounded-lg overflow-hidden hover:border-primary/50 transition-all cursor-pointer shadow-sm hover:shadow-md relative"
               >
+                {/* Delete Button (X) */}
+                <button
+                  onClick={(e) => handleDeleteProject(e, project.id)}
+                  className="absolute top-2 right-2 p-1.5 bg-black/40 text-white hover:bg-red-500 rounded-md opacity-0 group-hover:opacity-100 transition-all z-20"
+                  title="Delete Project"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
                 <div className="h-32 bg-muted flex items-center justify-center group-hover:bg-muted/80 transition-colors">
                   <Video className="w-10 h-10 text-muted-foreground group-hover:scale-110 transition-transform" />
                 </div>

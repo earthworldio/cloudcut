@@ -10,7 +10,7 @@ use shared::models::{Asset, PresignedUrlRequest, PresignedUrlResponse, ConfirmUp
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_s3::presigning::PresigningConfig;
 use std::time::Duration;
-use crate::handlers::projects::check_project_access;
+use crate::handlers::projects::{check_project_access, get_workspace_plan, check_rate_limit};
 use redis::AsyncCommands;
 
 /* 1. POST /api/assets/presigned-url */
@@ -66,6 +66,21 @@ pub async fn confirm_upload(
 ) -> Result<Json<Asset>, AppError> {
     /* ตรวจสอบสิทธิ์ Project */
     check_project_access(&pool, payload.project_id, user_id).await?;
+
+    /* Rate Limiting based on Plan */
+    let plan = get_workspace_plan(&pool, payload.project_id).await?;
+    let (workspace_id,): (Uuid,) = sqlx::query_as("SELECT workspace_id FROM projects WHERE id = $1")
+        .bind(payload.project_id).fetch_one(&pool).await
+        .map_err(|_| AppError::NotFound("Workspace ID not found".into()))?;
+
+    let upload_limit = match plan.as_str() {
+        "free" => 5,
+        "pro" => 50,
+        "team" => 200,
+        _ => 5,
+    };
+
+    check_rate_limit(&redis_client, workspace_id, "uploads", upload_limit, 3600).await?;
 
     /* กำหนด Asset Type จาก Content Type */
     let asset_type = if payload.content_type.starts_with("video/") {
