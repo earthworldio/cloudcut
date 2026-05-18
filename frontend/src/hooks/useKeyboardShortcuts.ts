@@ -39,7 +39,7 @@ export const useKeyboardShortcuts = () => {
           const end = clip.track_position_ms + clip.duration_ms;
 
           if (currentTimeMs > start && currentTimeMs < end) {
-            splitClip(clip.id, currentTimeMs - start);
+            splitClip(clip.id, currentTimeMs);
           }
         }
       }

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Project, Track, Clip, TimelineData, Asset } from '../types';
 import api from '../api/axios';
+import { useUIStore } from './uiStore';
 
 interface ProjectState {
   currentProject: Project | null;
@@ -16,7 +17,7 @@ interface ProjectState {
   addClip: (assetId: string, trackId: string, positionMs: number, assetDurationMs: number) => Promise<void>;
   moveClip: (clipId: string, positionMs: number, trackId: string) => Promise<void>;
   trimClip: (clipId: string, inPointMs: number, outPointMs: number) => Promise<void>;
-  splitClip: (clipId: string, atTimeMs: number) => Promise<void>;
+  splitClip: (clipId: string, atTimelineTimeMs: number) => Promise<void>;
   deleteClips: (clipIds: string[]) => Promise<void>;
   
   updateProjectNameLocal: (name: string) => void;
@@ -133,14 +134,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  splitClip: async (clipId, atTimeMs) => {
+  splitClip: async (clipId, atTimelineTimeMs) => {
     const projectId = get().currentProject?.id;
     if (!projectId) return;
     try {
-      await api.post(`/projects/${projectId}/clips/${clipId}/split`, {
-        split_time_ms: atTimeMs
-      });
-      get().loadProject(projectId);
+      const response = await api.post<{ part1: Clip, part2: Clip }>(
+        `/projects/${projectId}/clips/${clipId}/split`, 
+        { split_time_ms: Math.floor(atTimelineTimeMs) }
+      );
+      
+      /* Reload project to get updated state from server */
+      await get().loadProject(projectId);
+      
+      /* UX: Select the newly created second part */
+      const { part2 } = response.data;
+      if (part2) {
+        useUIStore.getState().selectClip(part2.id, false);
+      }
     } catch (err) {
       console.error("Failed to split clip", err);
     }
@@ -150,14 +160,27 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const projectId = get().currentProject?.id;
     if (!projectId || clipIds.length === 0) return;
 
+    /* Optimistic update: Remove from UI immediately */
+    const oldTracks = get().tracks;
+    set((state) => ({
+      tracks: state.tracks.map(track => ({
+        ...track,
+        clips: track.clips.filter(c => !clipIds.includes(c.id))
+      }))
+    }));
+
     try {
-      /* ปัจจุบันเรารองรับลบทีละอันใน Backend จึงวนลูป (หรือคุณจะแก้ Backend ให้รับอาเรย์ก็ได้) */
       await Promise.all(
         clipIds.map((id) => api.delete(`/projects/${projectId}/clips/${id}`))
       );
+      /* Clear selection */
+      useUIStore.getState().deselectAll();
+      /* Final sync with server */
       get().loadProject(projectId);
     } catch (err) {
       console.error("Failed to delete clips", err);
+      /* Rollback on error */
+      set({ tracks: oldTracks });
     }
   },
 

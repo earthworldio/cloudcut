@@ -33,8 +33,9 @@ export const Timeline: React.FC = () => {
       const start = clip.track_position_ms;
       const end = clip.track_position_ms + clip.duration_ms;
 
+      /* Check if playhead is within the clip bounds */
       if (currentTimeMs > start && currentTimeMs < end) {
-        splitClip(clip.id, currentTimeMs - start);
+        splitClip(clip.id, currentTimeMs);
       }
     }
   };

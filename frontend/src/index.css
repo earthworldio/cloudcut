@@ -30,3 +30,25 @@
 body {
   @apply bg-background text-foreground antialiased;
 }
+
+/* Custom Minimal Scrollbar */
+@layer utilities {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zinc-700/50 rounded-full hover:bg-zinc-600/80 transition-colors;
+  }
+
+  /* For Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(63, 63, 70, 0.5) transparent;
+  }
+}

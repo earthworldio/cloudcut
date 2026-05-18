@@ -3,7 +3,7 @@ mod middleware;
 mod error;
 
 use axum::{
-    routing::{get, post, patch, delete},
+    routing::{get, post, patch},
     Router,
     extract::FromRef,
 };
