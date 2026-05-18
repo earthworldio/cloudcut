@@ -670,33 +670,3 @@ pub async fn delete_project_handler(
 
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
-
-/* 7. ลบ Workspace (Hard Delete) */
-pub async fn delete_workspace(
-    State(pool): State<PgPool>,
-    Claims(user_id): Claims,
-    Path(workspace_id): Path<Uuid>,
-) -> Result<impl IntoResponse, AppError> {
-    /* ตรวจสอบว่าเป็นเจ้าของ Workspace หรือไม่ */
-    let is_owner = sqlx::query("SELECT 1 FROM workspaces WHERE id = $1 AND owner_id = $2")
-        .bind(workspace_id)
-        .bind(user_id)
-        .fetch_optional(&pool)
-        .await?;
-
-    if is_owner.is_none() {
-        return Err(AppError::Forbidden("Only workspace owner can delete the workspace".into()));
-    }
-
-    /* ลบ Workspace */
-    let result = sqlx::query("DELETE FROM workspaces WHERE id = $1")
-        .bind(workspace_id)
-        .execute(&pool)
-        .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Workspace not found".into()));
-    }
-
-    Ok(axum::http::StatusCode::NO_CONTENT)
-}

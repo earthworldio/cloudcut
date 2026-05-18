@@ -12,7 +12,7 @@ export const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const { deleteProject, deleteWorkspace } = useProjectStore();
+  const { deleteProject } = useProjectStore();
 
   useEffect(() => {
     fetchProjects();
@@ -51,31 +51,6 @@ export const DashboardPage: React.FC = () => {
         toast.fire({
           icon: "error",
           title: "Failed to delete project",
-        });
-      }
-    }
-  };
-
-  const handleDeleteWorkspace = async () => {
-    if (!user?.workspace_id) return;
-
-    const result = await alert.confirm(
-      "Delete Workspace?",
-      "All projects and data in this workspace will be PERMANENTLY DELETED. This is a destructive action.",
-    );
-
-    if (result.isConfirmed) {
-      try {
-        await deleteWorkspace(user.workspace_id);
-        toast.fire({
-          icon: "success",
-          title: "Workspace deleted",
-        });
-        logout(); // Logout after workspace deletion
-      } catch (err) {
-        toast.fire({
-          icon: "error",
-          title: "Failed to delete workspace",
         });
       }
     }
@@ -130,13 +105,6 @@ export const DashboardPage: React.FC = () => {
               Welcome, {user?.name}
             </span>
             <div className="h-6 w-px bg-border mx-2" />
-            <button
-              onClick={handleDeleteWorkspace}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-500/10 rounded transition-colors"
-              title="Delete Workspace"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Delete Workspace
-            </button>
             <button
               onClick={logout}
               className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground"

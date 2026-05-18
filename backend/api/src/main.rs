@@ -11,7 +11,7 @@ use handlers::auth::{register, login, me};
 use handlers::projects::{
     list_projects, create_project, get_timeline, update_project, update_clip, delete_clip, 
     split_clip, create_export, cancel_export, get_export_status, create_track, create_clip,
-    delete_project_handler, delete_workspace
+    delete_project_handler
 };
 use handlers::assets::{get_presigned_url, confirm_upload, list_assets};
 use shared::establish_connection;
@@ -116,9 +116,6 @@ async fn main() {
         .route("/projects/:id/exports", post(create_export))
         .route("/projects/:id/exports/:export_id", get(get_export_status))
         .route("/projects/:id/exports/:export_id/cancel", post(cancel_export))
-        
-        /* Workspace Routes */
-        .route("/workspaces/:id", delete(delete_workspace))
         
         /* Asset Routes */
         .route("/assets/presigned-url", post(get_presigned_url))
