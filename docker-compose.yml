@@ -23,6 +23,21 @@ services:
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    restart: always
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   api:
     image: 501588780040.dkr.ecr.ap-southeast-2.amazonaws.com/cloudcut-api:${TAG:-latest}
     build:
@@ -32,18 +47,22 @@ services:
     environment:
       DATABASE_URL: postgres://user:password@db:5432/cloudcut
       REDIS_URL: redis://redis:6379
-      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME}
       JWT_SECRET: ${JWT_SECRET}
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      AWS_ENDPOINT_URL: http://minio:9000
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    ports:
-      - "8080:8080"
+      minio:
+        condition: service_healthy
 
   worker:
     image: 501588780040.dkr.ecr.ap-southeast-2.amazonaws.com/cloudcut-worker:${TAG:-latest}
@@ -54,14 +73,20 @@ services:
     environment:
       DATABASE_URL: postgres://user:password@db:5432/cloudcut
       REDIS_URL: redis://redis:6379
-      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      AWS_ENDPOINT_URL: http://minio:9000
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   frontend:
@@ -70,10 +95,25 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     restart: always
-    ports:
-      - "80:80"
     environment:
       VITE_API_URL: ${VITE_API_URL}
 
+  caddy:
+    image: caddy:latest
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - frontend
+
 volumes:
   postgres_data:
+  minio_data:
+  caddy_data:
+  caddy_config:

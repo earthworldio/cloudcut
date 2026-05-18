@@ -1,0 +1,7 @@
+{$HOST} {
+    # Proxy requests to /api to the api service
+    reverse_proxy /api/* api:8080
+
+    # Proxy everything else to the frontend service
+    reverse_proxy * frontend:80
+}
