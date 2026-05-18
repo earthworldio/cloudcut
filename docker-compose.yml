@@ -24,7 +24,7 @@ services:
       retries: 5
 
   api:
-    image: 501588780040.dkr.ecr.ap-southeast-2.amazonaws.com/cloudcut-api:latest
+    image: 501588780040.dkr.ecr.ap-southeast-2.amazonaws.com/cloudcut-api:${TAG:-latest}
     build:
       context: .
       dockerfile: backend/Dockerfile.api
@@ -46,7 +46,7 @@ services:
       - "8080:8080"
 
   worker:
-    image: 501588780040.dkr.ecr.ap-southeast-2.amazonaws.com/cloudcut-worker:latest
+    image: 501588780040.dkr.ecr.ap-southeast-2.amazonaws.com/cloudcut-worker:${TAG:-latest}
     build:
       context: .
       dockerfile: backend/Dockerfile.worker
@@ -65,7 +65,7 @@ services:
         condition: service_healthy
 
   frontend:
-    image: 501588780040.dkr.ecr.ap-southeast-2.amazonaws.com/cloudcut-frontend:latest
+    image: 501588780040.dkr.ecr.ap-southeast-2.amazonaws.com/cloudcut-frontend:${TAG:-latest}
     build:
       context: .
       dockerfile: frontend/Dockerfile
