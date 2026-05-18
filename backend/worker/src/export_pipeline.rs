@@ -192,19 +192,16 @@ pub async fn handle_render_export(
         let export_key = format!("exports/{}/{}.mp4", project_id, export_id);
         upload_to_minio(s3, &final_output_path, &export_key, "video/mp4").await?;
 
-        /* 7. สร้าง Download URL */
-        let download_url = get_long_presigned_url(s3, &export_key).await?;
-
-        /* 8. อัปเดตสำเร็จ */
+        /* 8. อัปเดตสำเร็จ (store the object key; API will generate presigned URL on demand) */
         sqlx::query(
-            "UPDATE export_jobs SET 
-                status = 'completed', 
-                progress_percent = 100, 
-                output_url = $1, 
-                completed_at = NOW() 
+            "UPDATE export_jobs SET
+                status = 'completed',
+                progress_percent = 100,
+                output_url = $1,
+                completed_at = NOW()
              WHERE id = $2"
         )
-        .bind(download_url)
+        .bind(&export_key)
         .bind(export_id)
         .execute(db)
         .await?;

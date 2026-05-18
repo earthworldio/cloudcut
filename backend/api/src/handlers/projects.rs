@@ -11,6 +11,9 @@ use crate::error::AppError;
 use sqlx::{PgPool};
 use uuid::Uuid;
 use serde::Deserialize;
+use aws_sdk_s3::Client as S3Client;
+use aws_sdk_s3::presigning::PresigningConfig;
+use std::time::Duration;
 
 /* --- Timeline Mutation Handlers --- */
 
@@ -148,19 +151,62 @@ pub async fn delete_clip(
 
 pub async fn get_export_status(
     State(pool): State<PgPool>,
+    State(s3): State<S3Client>,
     Claims(user_id): Claims,
     Path((project_id, export_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
     check_project_access(&pool, project_id, user_id).await?;
 
-    let job = sqlx::query_as::<_, shared::models::ExportJob>("SELECT * FROM export_jobs WHERE id = $1 AND project_id = $2")
-        .bind(export_id)
-        .bind(project_id)
-        .fetch_optional(&pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Export job not found".into()))?;
+    let job = sqlx::query_as::<_, shared::models::ExportJob>(
+        "SELECT * FROM export_jobs WHERE id = $1 AND project_id = $2"
+    )
+    .bind(export_id)
+    .bind(project_id)
+    .fetch_optional(&pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Export job not found".into()))?;
 
-    Ok(Json(job))
+    let mut job_json = serde_json::to_value(&job).map_err(|e| AppError::Internal(e.into()))?;
+
+    if job.status == "completed" {
+        if let Some(key_or_url) = &job.output_url {
+            let key = if key_or_url.starts_with("http") {
+                /* Legacy entries: extract the object key from the URL */
+                let bucket = std::env::var("S3_BUCKET_NAME").unwrap_or_else(|_| "cloudcut-assets".to_string());
+                let prefix = format!("/{}/", bucket);
+                if let Some(pos) = key_or_url.find(&prefix) {
+                    let after = &key_or_url[pos + prefix.len()..];
+                    after.split('?').next().unwrap_or(after).to_string()
+                } else {
+                    key_or_url.clone()
+                }
+            } else {
+                key_or_url.clone()
+            };
+
+            let bucket = std::env::var("S3_BUCKET_NAME").unwrap_or_else(|_| "cloudcut-assets".to_string());
+            let filename = key.split('/').last().unwrap_or("video.mp4");
+            let content_disposition = format!("attachment; filename=\"{}\"", filename);
+
+            if let Ok(presigned_req) = s3
+                .get_object()
+                .bucket(&bucket)
+                .key(&key)
+                .response_content_disposition(content_disposition)
+                .presigned(PresigningConfig::expires_in(Duration::from_secs(3600)).unwrap())
+                .await
+            {
+                if let Some(obj) = job_json.as_object_mut() {
+                    obj.insert(
+                        "output_url".to_string(),
+                        serde_json::Value::String(presigned_req.uri().to_string()),
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(Json(job_json))
 }
 
 /* 4. Split Clip (Atomic Transaction) */
