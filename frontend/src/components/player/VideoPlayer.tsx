@@ -8,8 +8,7 @@ interface VideoPlayerProps {
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, offsetMs }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { isPlaying, currentTimeMs, seek, volume, isMuted } =
-    usePlaybackStore();
+  const { isPlaying, volume, isMuted } = usePlaybackStore();
 
   /* 1. Sync Play/Pause */
   useEffect(() => {

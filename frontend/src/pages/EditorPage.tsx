@@ -40,7 +40,7 @@ export const EditorPage: React.FC = () => {
     assets,
   } = useProjectStore();
   const { isPlaying, currentTimeMs, play, pause, seek } = usePlaybackStore();
-  const { selectedClipIds } = useUIStore();
+
 
   /* 1. Global Clock for Playhead movement */
   useEffect(() => {

@@ -57,8 +57,8 @@ export const AssetPool: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file || !currentProject) return;
 
-    /* 1. Validate File Size (Max 10MB) */
-    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    /* 1. Validate File Size (Max 50MB) */
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
     if (file.size > MAX_FILE_SIZE) {
       toast.fire({
         icon: "error",

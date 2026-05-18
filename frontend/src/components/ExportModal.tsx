@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { X, Download, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import api from "../api/axios";
 import { toast } from "../lib/swal";
@@ -16,24 +16,31 @@ interface ExportJob {
   error_message?: string;
 }
 
-export const ExportModal: React.FC<ExportModalProps> = ({ projectId, onClose }) => {
+export const ExportModal: React.FC<ExportModalProps> = ({
+  projectId,
+  onClose,
+}) => {
   const [isStarting, setIsStarting] = useState(false);
   const [job, setJob] = useState<ExportJob | null>(null);
 
   const startExport = async () => {
     setIsStarting(true);
     try {
-      const { data } = await api.post(`/projects/${projectId}/exports`, {
-        format: "mp4",
-        resolution: "1080p"
-      });
-      /* The API returns { exportId, status } */
-      pollStatus(data.exportId);
+      const { data: jobResponse } = await api.post<ExportJob>(
+        `/projects/${projectId}/exports`,
+        {
+          format: "mp4",
+          resolution: "1080p",
+          quality: "standard",
+        },
+      );
+      setJob(jobResponse);
+      pollStatus(jobResponse.id);
     } catch (err: any) {
       toast.fire({
         icon: "error",
         title: "Export Failed",
-        text: err.response?.data?.message || "Could not start export"
+        text: err.response?.data?.message || "Could not start export",
       });
       setIsStarting(false);
     }
@@ -46,11 +53,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({ projectId, onClose }) 
          if the backend provides it. Or we can create a specific endpoint.
          For now, let's assume we have an endpoint GET /api/projects/:id/exports/:exportId
       */
-      const jobRes = await api.get<ExportJob>(`/projects/${projectId}/exports/${exportId}`);
+      const jobRes = await api.get<ExportJob>(
+        `/projects/${projectId}/exports/${exportId}`,
+      );
       setJob(jobRes.data);
       setIsStarting(false);
 
-      if (jobRes.data.status === "queued" || jobRes.data.status === "processing") {
+      if (
+        jobRes.data.status === "queued" ||
+        jobRes.data.status === "processing"
+      ) {
         setTimeout(() => pollStatus(exportId), 2000);
       }
     } catch (err) {
@@ -65,12 +77,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({ projectId, onClose }) 
       setJob({ ...job, status: "cancelled" });
       toast.fire({
         icon: "info",
-        title: "Export Cancelled"
+        title: "Export Cancelled",
       });
     } catch (err) {
       toast.fire({
         icon: "error",
-        title: "Cancel Failed"
+        title: "Cancel Failed",
       });
     }
   };
@@ -80,7 +92,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({ projectId, onClose }) 
       <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-xl shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between p-4 border-b border-zinc-800">
           <h3 className="text-lg font-bold">Export Video</h3>
-          <button onClick={onClose} className="p-1 hover:bg-zinc-800 rounded-full transition-colors">
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-zinc-800 rounded-full transition-colors"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -106,7 +121,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({ projectId, onClose }) 
             </div>
           )}
 
-          {(isStarting || (job && (job.status === "queued" || job.status === "processing"))) && (
+          {(isStarting ||
+            (job &&
+              (job.status === "queued" || job.status === "processing"))) && (
             <div className="space-y-6 text-center">
               <div className="relative w-24 h-24 mx-auto">
                 <Loader2 className="w-24 h-24 text-primary animate-spin" />
@@ -121,8 +138,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ projectId, onClose }) 
                 </p>
               </div>
               <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
-                <div 
-                  className="bg-primary h-full transition-all duration-500" 
+                <div
+                  className="bg-primary h-full transition-all duration-500"
                   style={{ width: `${job?.progress_percent || 0}%` }}
                 />
               </div>
@@ -165,14 +182,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({ projectId, onClose }) 
               </div>
               <div>
                 <h4 className="font-semibold text-lg">
-                  {job.status === "cancelled" ? "Export Cancelled" : "Export Failed"}
+                  {job.status === "cancelled"
+                    ? "Export Cancelled"
+                    : "Export Failed"}
                 </h4>
                 <p className="text-sm text-zinc-400 mt-2">
-                  {job.error_message || "Something went wrong during the render process."}
+                  {job.error_message ||
+                    "Something went wrong during the render process."}
                 </p>
               </div>
               <button
-                onClick={() => { setJob(null); setIsStarting(false); }}
+                onClick={() => {
+                  setJob(null);
+                  setIsStarting(false);
+                }}
                 className="w-full py-3 bg-zinc-800 text-white font-bold rounded-lg hover:bg-zinc-700 transition-colors"
               >
                 Try Again

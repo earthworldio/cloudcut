@@ -16,7 +16,7 @@ import { TimelineRuler } from "./timeline/TimelineRuler";
 import { Playhead } from "./timeline/Playhead";
 
 export const Timeline: React.FC = () => {
-  const { tracks, addClip, moveClip, splitClip, splitAllClipsAt, deleteClips } =
+  const { tracks, addClip, moveClip, splitAllClipsAt, deleteClips } =
     useProjectStore();
 
   const { zoomLevel, setZoom, selectedClipIds, selectClip } = useUIStore();
