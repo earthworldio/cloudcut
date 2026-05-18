@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import type { Project } from "../types";
-import { Plus, Video, LogOut, Layout, Trash2, X } from "lucide-react";
+import { Plus, Video, LogOut, Layout, X } from "lucide-react";
 import { useAuthStore } from "../stores/authStore";
 import { useProjectStore } from "../stores/projectStore";
 import { alert, toast } from "../lib/swal";
