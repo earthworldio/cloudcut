@@ -20,6 +20,12 @@ pub async fn get_presigned_url(
     Claims(user_id): Claims,
     Json(payload): Json<PresignedUrlRequest>,
 ) -> Result<Json<PresignedUrlResponse>, AppError> {
+    /* ตรวจสอบขนาดไฟล์เบื้องต้น (Backend-side Validation) */
+    const MAX_FILE_SIZE: i64 = 100 * 1024 * 1024; // 100MB
+    if payload.size_bytes > MAX_FILE_SIZE {
+        return Err(AppError::Internal(anyhow::Error::msg("File size exceeds 100MB limit")));
+    }
+
     /* ตรวจสอบสิทธิ์ Project */
     check_project_access(&pool, payload.project_id, user_id).await?;
 
@@ -87,16 +93,14 @@ pub async fn confirm_upload(
         "video"
     } else if payload.content_type.starts_with("audio/") {
         "audio"
-    } else if payload.content_type.starts_with("image/") {
-        "image"
     } else {
-        "other"
+        return Err(AppError::Internal(anyhow::Error::msg("Only video and audio files are allowed")));
     };
 
     /* เริ่ม Transaction เพื่อความถูกต้องของข้อมูล */
     let mut tx = pool.begin().await?;
 
-    /* บันทึกลงฐานข้อมูล */
+    /* 2. บันทึกข้อมูล Asset (Hardened Validation) */
     let asset = sqlx::query_as::<_, Asset>(
         "INSERT INTO assets (id, project_id, uploaded_by, type, original_url, status, metadata) 
          VALUES ($1, $2, $3, $4, $5, $6, $7) 
@@ -111,7 +115,8 @@ pub async fn confirm_upload(
     .bind(serde_json::json!({
         "filename": payload.filename,
         "contentType": payload.content_type,
-        "sizeBytes": payload.size_bytes
+        "sizeBytes": payload.size_bytes,
+        "uploadVerified": true
     }))
     .fetch_one(&mut *tx)
     .await?;

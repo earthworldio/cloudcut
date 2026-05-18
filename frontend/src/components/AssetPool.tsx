@@ -57,6 +57,37 @@ export const AssetPool: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file || !currentProject) return;
 
+    /* 1. Validate File Size (Max 100MB) */
+    const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+    if (file.size > MAX_FILE_SIZE) {
+      toast.fire({
+        icon: "error",
+        title: "File too large",
+        text: "Please upload files smaller than 100MB for this project.",
+      });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    /* 2. Validate File Type (Allowed: Video, Audio only) */
+    const allowedTypes = [
+      "video/mp4",
+      "video/quicktime",
+      "video/x-matroska",
+      "audio/mpeg",
+      "audio/wav",
+      "audio/x-wav",
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      toast.fire({
+        icon: "error",
+        title: "Unsupported file type",
+        text: `The file type ${file.type} is not supported. Please use MP4, MOV, MP3, or WAV. Images are not allowed.`,
+      });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     setIsUploading(true);
     try {
       /* Get Presigned URL */
@@ -134,7 +165,7 @@ export const AssetPool: React.FC = () => {
           ref={fileInputRef}
           className="hidden"
           onChange={handleFileSelect}
-          accept="video/*,audio/*,image/*"
+          accept="video/*,audio/*"
         />
       </div>
 
