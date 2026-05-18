@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, State, Extension},
     Json,
     response::IntoResponse,
 };
@@ -619,13 +619,46 @@ pub async fn cancel_export(
 /* 6. ลบ Project (Hard Delete) */
 pub async fn delete_project_handler(
     State(pool): State<PgPool>,
+    Extension(s3): Extension<aws_sdk_s3::Client>,
     Claims(user_id): Claims,
     Path(project_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     /* ตรวจสอบสิทธิ์ */
     check_project_access(&pool, project_id, user_id).await?;
 
-    /* ลบโปรเจกต์ (ON DELETE CASCADE จะจัดการที่เหลือเอง) */
+    /* 1. ดึงข้อมูล Assets และ Exports ที่เกี่ยวข้องเพื่อไปลบใน S3 */
+    let object_keys: Vec<String> = sqlx::query_scalar(
+        "SELECT original_url FROM assets WHERE project_id = $1"
+    )
+    .bind(project_id)
+    .fetch_all(&pool)
+    .await?;
+
+    let export_keys: Vec<String> = sqlx::query_scalar(
+        "SELECT output_url FROM export_jobs WHERE project_id = $1 AND output_url IS NOT NULL"
+    )
+    .bind(project_id)
+    .fetch_all(&pool)
+    .await?;
+
+    /* 2. ลบไฟล์ใน S3/MinIO */
+    let bucket = std::env::var("S3_BUCKET_NAME").unwrap_or_else(|_| "cloudcut-assets".to_string());
+    
+    /* ลบ Assets */
+    for key in object_keys {
+        let _ = s3.delete_object().bucket(&bucket).key(&key).send().await;
+    }
+
+    /* ลบ Exports */
+    for url in export_keys {
+        /* แยก Key ออกจาก URL (ตัวอย่าง: http://.../bucket/exports/...) */
+        if let Some(key_start) = url.find("exports/") {
+            let key = &url[key_start..];
+            let _ = s3.delete_object().bucket(&bucket).key(key).send().await;
+        }
+    }
+
+    /* 3. ลบข้อมูลใน Database (ON DELETE CASCADE จะจัดการ Tracks, Clips, Exports, Assets เอง) */
     let result = sqlx::query("DELETE FROM projects WHERE id = $1")
         .bind(project_id)
         .execute(&pool)

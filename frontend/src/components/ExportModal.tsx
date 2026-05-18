@@ -148,6 +148,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ projectId, onClose }) 
               </div>
               <a
                 href={job.output_url}
+                download={`video_${projectId.slice(0, 8)}.mp4`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-500 transition-colors"

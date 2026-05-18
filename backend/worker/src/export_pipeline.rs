@@ -100,9 +100,14 @@ pub async fn handle_render_export(
                     "-ss", &start_time,
                     "-to", &end_time,
                     "-i", &file_url,
+                    /* ทำ Re-encoding และ Normalization เพื่อให้ทุกคลิปมี Codec, Resolution และ FPS เท่ากัน */
                     "-c:v", "libx264",
+                    "-preset", "veryfast",
+                    "-crf", "23",
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p,fps=30",
                     "-c:a", "aac",
-                    "-pix_fmt", "yuv420p",
+                    "-ar", "44100",
+                    "-ac", "2",
                     &segment_path,
                 ])
                 .spawn()
@@ -243,8 +248,16 @@ async fn get_presigned_url(s3: &aws_sdk_s3::Client, key: &str) -> Result<String>
 async fn get_long_presigned_url(s3: &aws_sdk_s3::Client, key: &str) -> Result<String> {
     let bucket = std::env::var("S3_BUCKET_NAME").unwrap_or_else(|_| "cloudcut-assets".to_string());
     /* 7 วัน (Max สำหรับ S3 Presigned URL โดยปกติ) */
-    let req = s3.get_object().bucket(bucket).key(key)
-        .presigned(PresigningConfig::expires_in(Duration::from_secs(7 * 24 * 3600))?).await?;
+    /* เพิ่ม ResponseContentDisposition เพื่อบังคับให้ Browser ดาวน์โหลดไฟล์แทนการเปิดเล่น */
+    let filename = key.split('/').last().unwrap_or("video.mp4");
+    let content_disposition = format!("attachment; filename=\"{}\"", filename);
+    
+    let req = s3.get_object()
+        .bucket(bucket)
+        .key(key)
+        .response_content_disposition(content_disposition)
+        .presigned(PresigningConfig::expires_in(Duration::from_secs(7 * 24 * 3600))?)
+        .await?;
     Ok(req.uri().to_string())
 }
 
