@@ -26,7 +26,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const startExport = async () => {
     setIsStarting(true);
     try {
-      const { data: jobResponse } = await api.post<ExportJob>(
+      const { data: jobResponse } = await api.post<{ exportId: string; status: string }>(
         `/projects/${projectId}/exports`,
         {
           format: "mp4",
@@ -34,8 +34,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           quality: "standard",
         },
       );
-      setJob(jobResponse);
-      pollStatus(jobResponse.id);
+      pollStatus(jobResponse.exportId);
     } catch (err: any) {
       toast.fire({
         icon: "error",
