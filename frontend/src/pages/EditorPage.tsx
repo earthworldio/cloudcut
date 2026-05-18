@@ -3,7 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useProjectStore } from "../stores/projectStore";
 import { usePlaybackStore } from "../stores/playbackStore";
-import { useUIStore } from "../stores/uiStore";
 import {
   ChevronLeft,
   Play,

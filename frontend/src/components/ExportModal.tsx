@@ -48,7 +48,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const pollStatus = async (exportId: string) => {
     try {
-      const { data } = await api.get(`/projects/${projectId}/timeline`);
       /* In this simplified implementation, we find the export job in the project data 
          if the backend provides it. Or we can create a specific endpoint.
          For now, let's assume we have an endpoint GET /api/projects/:id/exports/:exportId
