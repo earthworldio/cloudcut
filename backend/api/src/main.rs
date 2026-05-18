@@ -131,7 +131,7 @@ async fn main() {
         .with_state(state);
 
     /* 5. เริ่ม Server */
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     println!("🚀 Server started at http://{}", addr);
 
     
