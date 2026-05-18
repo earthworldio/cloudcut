@@ -52,6 +52,7 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-password123}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-cloudcut-assets}
       JWT_SECRET: ${JWT_SECRET:-secret}
+      FRONTEND_URL: https://${HOST:-localhost}
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-admin}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-password123}

@@ -93,8 +93,10 @@ async fn main() {
     };
 
     /* 3. ตั้งค่า CORS (อนุญาตให้ Frontend เข้าถึงได้) */
+    let frontend_url = std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:5173".to_string());
+    
     let cors = CorsLayer::new()
-        .allow_origin("http://localhost:5173".parse::<HeaderValue>().unwrap())
+        .allow_origin(frontend_url.parse::<HeaderValue>().unwrap())
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
         .allow_headers(Any);
 
