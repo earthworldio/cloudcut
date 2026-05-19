@@ -38,6 +38,23 @@ services:
       timeout: 5s
       retries: 5
 
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-admin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-password123}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-cloudcut-assets}
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY &&
+        mc mb --ignore-existing local/$$S3_BUCKET_NAME &&
+        mc anonymous set download local/$$S3_BUCKET_NAME
+      "
+
   api:
     image: 501588780040.dkr.ecr.ap-southeast-2.amazonaws.com/cloudcut-api:${TAG:-latest}
     build:
@@ -56,7 +73,7 @@ services:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-admin}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-password123}
-      AWS_ENDPOINT_URL: http://minio:9000
+      AWS_ENDPOINT_URL: https://${HOST:-localhost}
     depends_on:
       db:
         condition: service_healthy
@@ -96,10 +113,8 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-https://13-239-36-45.sslip.io/api}
+        VITE_API_URL: ${VITE_API_URL:-/api}
     restart: always
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api}
 
   caddy:
     image: caddy:latest

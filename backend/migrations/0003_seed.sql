@@ -1,7 +1,7 @@
--- 1. SEED USERS (จำลอง Password hash รหัส 'password123')
+-- 1. SEED USERS (password: 'password123', bcrypt cost 10)
 INSERT INTO users (id, email, password_hash, name) VALUES
-('018e3a20-0001-7000-8000-000000000001', 'alice@cloudcut.com', '$argon2id$v=19$m=19456,t=2,p=1$bW9ja3NhbHQ$M0pZdVptVlBkaW05clY4M05Wb0F6UT09', 'Alice Baker'),
-('018e3a20-0002-7000-8000-000000000002', 'bob@cloudcut.com', '$argon2id$v=19$m=19456,t=2,p=1$bW9ja3NhbHQ$M0pZdVptVlBkaW05clY4M05Wb0F6UT09', 'Bob Carter');
+('018e3a20-0001-7000-8000-000000000001', 'alice@cloudcut.com', '$2y$10$/Vw8pOHjHFer3booDj5MW.WkBxAY3bm/g.9TEOpSUJyew5snEoqKK', 'Alice Baker'),
+('018e3a20-0002-7000-8000-000000000002', 'bob@cloudcut.com', '$2y$10$/Vw8pOHjHFer3booDj5MW.WkBxAY3bm/g.9TEOpSUJyew5snEoqKK', 'Bob Carter');
 
 -- 2. SEED WORKSPACE
 INSERT INTO workspaces (id, name, slug, plan, owner_id) VALUES
