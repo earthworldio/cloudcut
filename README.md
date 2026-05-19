@@ -1,12 +1,27 @@
-# cloudcut-challenge
+# 4. Copy env
+cp .env.example .env
 
-A multi-package Cargo Workspace monorepo for a SaaS project.
+# 5. Build จาก source
+docker compose build
 
-## Project Structure
+# 6. Start infra ก่อน (db, redis, minio, minio-init)
+docker compose up -d db redis minio minio-init
 
-- `backend/api`: Binary crate for the API service.
-- `backend/worker`: Binary crate for the background worker.
-- `backend/shared`: Library crate for shared logic and data structures.
-- `frontend`: Vite + React + TypeScript frontend.
-- `docker-compose.yml`: Infrastructure setup (PostgreSQL, Redis).
-- `DESIGN.md`: Architecture and design documentation.
+# 7. รอ minio-init เสร็จ แล้วรัน migrations
+docker compose logs -f minio-init  # รอจนเห็น "Bucket created" แล้ว Ctrl+C
+
+# 8. รัน migrations
+docker exec $(docker compose ps -q db) \
+  sh -c "PGPASSWORD=password psql -U user cloudcut" < backend/migrations/0001_init.sql
+docker exec $(docker compose ps -q db) \
+  sh -c "PGPASSWORD=password psql -U user cloudcut" < backend/migrations/0002_indexes.sql
+docker exec $(docker compose ps -q db) \
+  sh -c "PGPASSWORD=password psql -U user cloudcut" < backend/migrations/0003_seed.sql
+
+# 9. Start ทุกอย่าง
+docker compose up -d
+
+
+เข้าได้ที่ http://localhost 
+
+login: alice@cloudcut.com / password123
