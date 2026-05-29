@@ -16,6 +16,13 @@ struct ExportEvent {
     export_id: Uuid,
 }
 
+#[derive(Deserialize)]
+struct FunctionUrlEvent {
+    body: Option<String>,
+    #[serde(flatten)]
+    direct: Option<serde_json::Value>,
+}
+
 #[derive(Serialize)]
 struct ExportResponse {
     status: String,
@@ -31,8 +38,17 @@ struct Clip {
     out_point_ms: i32,
 }
 
-async fn handler(event: LambdaEvent<ExportEvent>) -> Result<ExportResponse, Error> {
-    let ExportEvent { project_id, export_id } = event.payload;
+async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<ExportResponse, Error> {
+    let payload = event.payload;
+
+    /* รองรับทั้ง Function URL (body field) และ direct SDK invoke */
+    let export_event: ExportEvent = if let Some(body) = payload.get("body").and_then(|b| b.as_str()) {
+        serde_json::from_str(body)?
+    } else {
+        serde_json::from_value(payload)?
+    };
+
+    let ExportEvent { project_id, export_id } = export_event;
 
     info!(%project_id, %export_id, "Lambda export started");
 

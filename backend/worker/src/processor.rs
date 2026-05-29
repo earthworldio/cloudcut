@@ -419,8 +419,11 @@ async fn get_presigned_url(s3: &aws_sdk_s3::Client, key: &str) -> Result<String>
 
 async fn upload_to_minio(s3: &aws_sdk_s3::Client, local_path: &str, key: &str, content_type: &str) -> Result<()> {
     let bucket = std::env::var("S3_BUCKET_NAME").unwrap_or_else(|_| "cloudcut-assets".to_string());
-    let body = aws_sdk_s3::primitives::ByteStream::from_path(local_path).await?;
-    s3.put_object().bucket(bucket).key(key).content_type(content_type).body(body).send().await?;
+    let data = tokio::fs::read(local_path).await
+        .with_context(|| format!("Failed to read file: {}", local_path))?;
+    let body = aws_sdk_s3::primitives::ByteStream::from(data);
+    s3.put_object().bucket(bucket).key(key).content_type(content_type).body(body).send().await
+        .with_context(|| format!("S3 upload failed for key: {}", key))?;
     Ok(())
 }
 

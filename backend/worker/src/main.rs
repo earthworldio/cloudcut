@@ -36,11 +36,12 @@ async fn main() -> Result<()> {
     let access_key = std::env::var("AWS_ACCESS_KEY_ID").ok();
     let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").ok();
     
+    let use_minio = endpoint_url.is_some();
     let mut s3_config_builder = aws_sdk_s3::config::Builder::from(&aws_config::defaults(aws_config::BehaviorVersion::latest())
         .region(aws_sdk_s3::config::Region::new(region))
         .load()
         .await)
-        .force_path_style(true);
+        .force_path_style(use_minio);
     
     if let Some(url) = endpoint_url {
         s3_config_builder = s3_config_builder.endpoint_url(url);

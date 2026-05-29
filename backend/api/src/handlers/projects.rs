@@ -546,7 +546,6 @@ pub struct ExportRequest {
 pub async fn create_export(
     State(pool): State<PgPool>,
     State(redis_client): State<redis::Client>,
-    State(lambda_client): State<aws_sdk_lambda::Client>,
     Claims(user_id): Claims,
     Path(project_id): Path<Uuid>,
     Json(payload): Json<ExportRequest>,
@@ -606,25 +605,21 @@ pub async fn create_export(
 
     /* 3. Route งานตาม resolution */
     if payload.resolution == "4k" {
-        /* 4K → invoke Lambda async */
-        let lambda_arn = std::env::var("LAMBDA_EXPORT_4K_ARN")
-            .map_err(|_| AppError::Internal(anyhow::Error::msg("LAMBDA_EXPORT_4K_ARN not set")))?;
+        /* 4K → invoke Lambda via Function URL (HTTP POST) */
+        let lambda_url = std::env::var("LAMBDA_EXPORT_4K_URL")
+            .map_err(|_| AppError::Internal(anyhow::Error::msg("LAMBDA_EXPORT_4K_URL not set")))?;
 
         let event = serde_json::json!({
             "project_id": project_id,
             "export_id": export_id,
         });
 
-        lambda_client
-            .invoke()
-            .function_name(&lambda_arn)
-            .invocation_type(aws_sdk_lambda::types::InvocationType::Event) /* async */
-            .payload(aws_sdk_lambda::primitives::Blob::new(
-                serde_json::to_vec(&event).unwrap()
-            ))
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Lambda invoke error: {}", e))))?;
+        tokio::spawn(async move {
+            let client = reqwest::Client::new();
+            if let Err(e) = client.post(&lambda_url).json(&event).send().await {
+                tracing::error!("Lambda Function URL invoke error: {}", e);
+            }
+        });
     } else {
         /* 720p / 1080p → Redis Queue → Worker เดิม */
         let job_payload = JobPayload::RenderExport {
