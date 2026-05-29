@@ -6,6 +6,7 @@ members = [
     "backend/api",
     "backend/worker",
     "backend/shared",
+    "lambda/export-4k",
 ]
 
 # บอก Rust ว่าให้ใช้ตัวจัดการ version อะไร
