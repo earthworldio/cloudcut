@@ -52,7 +52,29 @@ pub async fn handle_render_export(
     });
 
     let result = async {
-        /* 2. ดึงข้อมูล Clips จาก Timeline */
+        /* 2. ดึง resolution จาก export job */
+        let resolution: String = sqlx::query_scalar(
+            "SELECT resolution FROM export_jobs WHERE id = $1"
+        )
+        .bind(export_id)
+        .fetch_one(db)
+        .await
+        .unwrap_or_else(|_| "1080p".to_string());
+
+        let (width, height, fps, crf, preset) = match resolution.as_str() {
+            "4k"   => (3840, 2160, 60, "18", "slow"),
+            "720p" => (1280,  720, 30, "23", "veryfast"),
+            _      => (1920, 1080, 30, "23", "veryfast"),
+        };
+
+        let vf_filter = format!(
+            "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2,format=yuv420p,fps={}",
+            width, height, width, height, fps
+        );
+
+        info!(resolution = %resolution, width, height, fps, "Export settings");
+
+        /* 3. ดึงข้อมูล Clips จาก Timeline */
         let clips = sqlx::query_as::<_, Clip>(
             "SELECT c.* FROM clips c 
              JOIN tracks t ON c.track_id = t.id 
@@ -69,13 +91,13 @@ pub async fn handle_render_export(
             return Ok(());
         }
 
-        /* 3. เตรียมไดเรกทอรีชั่วคราว */
+        /* 4. เตรียมไดเรกทอรีชั่วคราว */
         let temp_dir = format!("/tmp/export_{}", export_id);
         std::fs::create_dir_all(&temp_dir)?;
 
         let mut segments = Vec::new();
 
-        /* 4. Trimming Clips */
+        /* 5. Trimming Clips */
         for (idx, clip) in clips.iter().enumerate() {
             if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
                 return Err(anyhow::anyhow!("Export cancelled"));
@@ -100,11 +122,10 @@ pub async fn handle_render_export(
                     "-ss", &start_time,
                     "-to", &end_time,
                     "-i", &file_url,
-                    /* ทำ Re-encoding และ Normalization เพื่อให้ทุกคลิปมี Codec, Resolution และ FPS เท่ากัน */
                     "-c:v", "libx264",
-                    "-preset", "veryfast",
-                    "-crf", "23",
-                    "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p,fps=30",
+                    "-preset", preset,
+                    "-crf", crf,
+                    "-vf", &vf_filter,
                     "-c:a", "aac",
                     "-ar", "44100",
                     "-ac", "2",
@@ -260,8 +281,12 @@ async fn get_long_presigned_url(s3: &aws_sdk_s3::Client, key: &str) -> Result<St
 
 async fn upload_to_minio(s3: &aws_sdk_s3::Client, local_path: &str, key: &str, content_type: &str) -> Result<()> {
     let bucket = std::env::var("S3_BUCKET_NAME").unwrap_or_else(|_| "cloudcut-assets".to_string());
-    let body = aws_sdk_s3::primitives::ByteStream::from_path(local_path).await?;
-    s3.put_object().bucket(bucket).key(key).content_type(content_type).body(body).send().await?;
+    /* อ่านไฟล์เข้า memory เพื่อหลีกเลี่ยง MinIO chunk size limit (16MiB) ของ chunked transfer */
+    let data = tokio::fs::read(local_path).await
+        .with_context(|| format!("Failed to read file: {}", local_path))?;
+    let body = aws_sdk_s3::primitives::ByteStream::from(data);
+    s3.put_object().bucket(&bucket).key(key).content_type(content_type).body(body).send().await
+        .map_err(|e| anyhow::anyhow!("S3 upload failed — bucket={} key={} error={:?}", bucket, key, e))?;
     Ok(())
 }
 

@@ -22,6 +22,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 }) => {
   const [isStarting, setIsStarting] = useState(false);
   const [job, setJob] = useState<ExportJob | null>(null);
+  const [resolution, setResolution] = useState<"720p" | "1080p" | "4k">("1080p");
 
   const startExport = async () => {
     setIsStarting(true);
@@ -30,7 +31,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         `/projects/${projectId}/exports`,
         {
           format: "mp4",
-          resolution: "1080p",
+          resolution,
           quality: "standard",
         },
       );
@@ -109,6 +110,24 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <p className="text-sm text-zinc-400 mt-2">
                   Your project will be rendered into a high-quality MP4 video.
                 </p>
+              </div>
+              <div className="text-left space-y-2">
+                <label className="text-sm font-medium text-zinc-300">Resolution</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["720p", "1080p", "4k"] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setResolution(r)}
+                      className={`py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                        resolution === r
+                          ? "border-primary bg-primary/20 text-primary"
+                          : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+                      }`}
+                    >
+                      {r === "4k" ? "4K 60fps" : r}
+                    </button>
+                  ))}
+                </div>
               </div>
               <button
                 onClick={startExport}

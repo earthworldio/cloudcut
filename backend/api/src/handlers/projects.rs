@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State, Extension},
+    extract::{Path, State},
     Json,
     response::IntoResponse,
 };
@@ -665,7 +665,7 @@ pub async fn cancel_export(
 /* 6. ลบ Project (Hard Delete) */
 pub async fn delete_project_handler(
     State(pool): State<PgPool>,
-    Extension(s3): Extension<aws_sdk_s3::Client>,
+    State(s3): State<aws_sdk_s3::Client>,
     Claims(user_id): Claims,
     Path(project_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
