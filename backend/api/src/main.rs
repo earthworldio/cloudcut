@@ -26,6 +26,7 @@ use uuid::Uuid;
 pub struct AppState {
     pub db: PgPool,
     pub s3: aws_sdk_s3::Client,
+    pub lambda: aws_sdk_lambda::Client,
     pub redis: redis::Client,
 }
 
@@ -38,6 +39,12 @@ impl FromRef<AppState> for PgPool {
 impl FromRef<AppState> for aws_sdk_s3::Client {
     fn from_ref(app_state: &AppState) -> Self {
         app_state.s3.clone()
+    }
+}
+
+impl FromRef<AppState> for aws_sdk_lambda::Client {
+    fn from_ref(app_state: &AppState) -> Self {
+        app_state.lambda.clone()
     }
 }
 
@@ -64,12 +71,13 @@ async fn main() {
     let access_key = std::env::var("AWS_ACCESS_KEY_ID").ok();
     let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").ok();
     
+    let use_minio = endpoint_url.is_some();
     let mut s3_config_builder = aws_sdk_s3::config::Builder::from(&aws_config::defaults(aws_config::BehaviorVersion::latest())
         .region(aws_sdk_s3::config::Region::new(region))
         .load()
         .await)
-        .force_path_style(true); /* จำเป็นสำหรับ MinIO */
-    
+        .force_path_style(use_minio); /* true สำหรับ MinIO, false สำหรับ AWS S3 */
+
     if let Some(url) = endpoint_url {
         s3_config_builder = s3_config_builder.endpoint_url(url);
     }
@@ -86,9 +94,20 @@ async fn main() {
     let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
     let redis_client = redis::Client::open(redis_url).expect("Failed to create Redis client");
 
+    /* 4. ตั้งค่า Lambda Client */
+    let lambda_region = std::env::var("AWS_REGION").unwrap_or_else(|_| "ap-southeast-1".to_string());
+    let lambda_config = aws_sdk_lambda::config::Builder::from(
+        &aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(aws_sdk_lambda::config::Region::new(lambda_region))
+            .load()
+            .await,
+    ).build();
+    let lambda_client = aws_sdk_lambda::Client::from_conf(lambda_config);
+
     let state = AppState {
         db: pool.clone(),
         s3: s3_client.clone(),
+        lambda: lambda_client,
         redis: redis_client,
     };
 

@@ -546,6 +546,7 @@ pub struct ExportRequest {
 pub async fn create_export(
     State(pool): State<PgPool>,
     State(redis_client): State<redis::Client>,
+    State(lambda_client): State<aws_sdk_lambda::Client>,
     Claims(user_id): Claims,
     Path(project_id): Path<Uuid>,
     Json(payload): Json<ExportRequest>,
@@ -603,19 +604,42 @@ pub async fn create_export(
     .execute(&mut *tx)
     .await?;
 
-    /* 3. ส่งงานเข้า Redis */
-    let job_payload = JobPayload::RenderExport {
-        project_id,
-        export_id,
-        idempotency_key: idempotency_key.clone(),
-        attempts: 0,
-    };
+    /* 3. Route งานตาม resolution */
+    if payload.resolution == "4k" {
+        /* 4K → invoke Lambda async */
+        let lambda_arn = std::env::var("LAMBDA_EXPORT_4K_ARN")
+            .map_err(|_| AppError::Internal(anyhow::Error::msg("LAMBDA_EXPORT_4K_ARN not set")))?;
 
-    let mut conn = redis_client.get_multiplexed_async_connection().await
-        .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Redis connection error: {}", e))))?;
+        let event = serde_json::json!({
+            "project_id": project_id,
+            "export_id": export_id,
+        });
 
-    let _: () = conn.lpush("queue:video_pipeline", serde_json::to_string(&job_payload).unwrap()).await
-        .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Redis push error: {}", e))))?;
+        lambda_client
+            .invoke()
+            .function_name(&lambda_arn)
+            .invocation_type(aws_sdk_lambda::types::InvocationType::Event) /* async */
+            .payload(aws_sdk_lambda::primitives::Blob::new(
+                serde_json::to_vec(&event).unwrap()
+            ))
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Lambda invoke error: {}", e))))?;
+    } else {
+        /* 720p / 1080p → Redis Queue → Worker เดิม */
+        let job_payload = JobPayload::RenderExport {
+            project_id,
+            export_id,
+            idempotency_key: idempotency_key.clone(),
+            attempts: 0,
+        };
+
+        let mut conn = redis_client.get_multiplexed_async_connection().await
+            .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Redis connection error: {}", e))))?;
+
+        let _: () = conn.lpush("queue:video_pipeline", serde_json::to_string(&job_payload).unwrap()).await
+            .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Redis push error: {}", e))))?;
+    }
 
     tx.commit().await?;
 

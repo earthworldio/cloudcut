@@ -212,29 +212,21 @@ async fn run_export(project_id: Uuid, export_id: Uuid) -> Result<String> {
 }
 
 async fn build_s3_client() -> aws_sdk_s3::Client {
-    let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
-    let endpoint_url = std::env::var("AWS_ENDPOINT_URL").ok();
-    let access_key = std::env::var("AWS_ACCESS_KEY_ID").ok();
-    let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").ok();
+    let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+        .load()
+        .await;
 
-    let mut builder = aws_sdk_s3::config::Builder::from(
-        &aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(aws_sdk_s3::config::Region::new(region))
-            .load()
-            .await,
-    )
-    .force_path_style(true);
-
-    if let Some(url) = endpoint_url {
-        builder = builder.endpoint_url(url);
-    }
-    if let (Some(key), Some(secret)) = (access_key, secret_key) {
-        builder = builder.credentials_provider(
-            aws_sdk_s3::config::Credentials::new(key, secret, None, None, "static"),
-        );
+    /* ถ้ามี custom endpoint (MinIO local) ให้ override */
+    if let Ok(endpoint_url) = std::env::var("AWS_ENDPOINT_URL") {
+        let s3_config = aws_sdk_s3::config::Builder::from(&config)
+            .endpoint_url(endpoint_url)
+            .force_path_style(true)
+            .build();
+        return aws_sdk_s3::Client::from_conf(s3_config);
     }
 
-    aws_sdk_s3::Client::from_conf(builder.build())
+    /* Lambda บน AWS ใช้ default credential chain (รวม session token อัตโนมัติ) */
+    aws_sdk_s3::Client::new(&config)
 }
 
 async fn get_presigned_url(s3: &aws_sdk_s3::Client, key: &str) -> Result<String> {
