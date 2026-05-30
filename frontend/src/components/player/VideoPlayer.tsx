@@ -9,6 +9,20 @@ interface VideoPlayerProps {
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, offsetMs }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const { isPlaying, volume, isMuted } = usePlaybackStore();
+  const loadedSrcBase = useRef<string | undefined>(undefined);
+
+  /* 0. โหลดวิดีโอเฉพาะตอนที่ไฟล์จริงเปลี่ยน (เปรียบเทียบ path ไม่รวม presigned query params)
+        ป้องกัน video reload ทุกครั้งที่ presigned URL ถูกสร้างใหม่ */
+  useEffect(() => {
+    if (!videoRef.current) return;
+    const baseSrc = src?.split("?")[0];
+    const lastBase = loadedSrcBase.current;
+    if (baseSrc !== lastBase) {
+      videoRef.current.src = src ?? "";
+      videoRef.current.load();
+      loadedSrcBase.current = baseSrc;
+    }
+  }, [src]);
 
   /* 1. Sync Play/Pause */
   useEffect(() => {
@@ -20,7 +34,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, offsetMs }) => {
     } else {
       videoRef.current.pause();
     }
-  }, [isPlaying, src]);
+  }, [isPlaying]);
 
   /* 2. Sync Time (Specific for this clip) */
   useEffect(() => {
@@ -48,7 +62,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, offsetMs }) => {
     <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden rounded-lg border border-border">
       <video
         ref={videoRef}
-        src={src}
         className={`max-w-full max-h-full ${src ? "block" : "hidden"}`}
         playsInline
         onLoadedMetadata={(e) => {

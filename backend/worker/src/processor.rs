@@ -126,7 +126,21 @@ async fn handle_retry(mut job: JobPayload, error_msg: String, redis: &redis::Cli
         let delay_secs = 2u64.pow(current_attempts);
         warn!(attempts = current_attempts + 1, delay = delay_secs, "Retrying job...");
 
-        /* Wait before re-queueing */
+        /* ลบ idempotency key ก่อน retry เพื่อให้ SETNX ผ่านในรอบถัดไป */
+        let idempotency_key_val = match &job {
+            JobPayload::ExtractMetadata { idempotency_key, .. } => Some(idempotency_key.clone()),
+            JobPayload::GenerateProxy { idempotency_key, .. } => Some(idempotency_key.clone()),
+            JobPayload::GenerateThumbnails { idempotency_key, .. } => Some(idempotency_key.clone()),
+            JobPayload::ExtractWaveform { idempotency_key, .. } => Some(idempotency_key.clone()),
+            JobPayload::RenderExport { idempotency_key, .. } => Some(idempotency_key.clone()),
+            _ => None,
+        };
+        if let Some(key) = idempotency_key_val {
+            if let Ok(mut conn) = redis.get_multiplexed_async_connection().await {
+                let _: Result<(), _> = conn.del(format!("idempotency:{}", key)).await;
+            }
+        }
+
         tokio::time::sleep(Duration::from_secs(delay_secs)).await;
 
         let mut conn = redis.get_multiplexed_async_connection().await?;
