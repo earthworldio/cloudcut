@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { LoginPage, DashboardPage, EditorPage } from "./pages";
+import { FlowExportPage } from "./pages/flow-export";
 import { ProtectedRoute } from "./components";
 import { useEffect } from "react";
 import { useAuthStore } from "./stores/authStore";
@@ -38,6 +39,7 @@ function App() {
           }
         />
 
+        <Route path="/flow-export" element={<FlowExportPage />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

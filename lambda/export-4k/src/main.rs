@@ -39,9 +39,13 @@ struct Clip {
 }
 
 async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<ExportResponse, Error> {
+    /* 3.0 Lambda ได้รับ event จาก Function URL (HTTP POST) หรือ SDK invoke
+           Function URL จะส่ง body มาใน field "body" เป็น JSON string
+           SDK invoke จะส่ง JSON ตรงๆ ไม่มี wrapper */
     let payload = event.payload;
 
-    /* รองรับทั้ง Function URL (body field) และ direct SDK invoke */
+    /* 3.1 Parse event ให้ได้ project_id และ export_id
+           รองรับ 2 format: Function URL wrapper และ direct invoke */
     let export_event: ExportEvent = if let Some(body) = payload.get("body").and_then(|b| b.as_str()) {
         serde_json::from_str(body)?
     } else {
@@ -52,6 +56,9 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<ExportResponse
 
     info!(%project_id, %export_id, "Lambda export started");
 
+    /* 3.2 เรียก run_export ซึ่งเป็น logic หลักทั้งหมด
+           ถ้าสำเร็จ → return "completed" พร้อม S3 key ของไฟล์ output
+           ถ้า fail → return "failed" และ Lambda จะไม่ retry (DB จะยังอยู่สถานะ failed) */
     match run_export(project_id, export_id).await {
         Ok(output_url) => {
             info!(%export_id, "Export completed");
@@ -73,6 +80,8 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<ExportResponse
 }
 
 async fn run_export(project_id: Uuid, export_id: Uuid) -> Result<String> {
+    /* 4.0 เชื่อมต่อ PostgreSQL (Neon) และ S3 (AWS)
+           Lambda อ่าน DATABASE_URL จาก environment variable ที่ตั้งไว้ใน Lambda Console */
     let database_url = std::env::var("DATABASE_URL").context("DATABASE_URL not set")?;
     let db = PgPoolOptions::new()
         .max_connections(3)
@@ -82,13 +91,16 @@ async fn run_export(project_id: Uuid, export_id: Uuid) -> Result<String> {
 
     let s3 = build_s3_client().await;
 
-    /* อัปเดตสถานะ */
+    /* 4.1 อัปเดตสถานะใน DB เป็น "processing" พร้อมบันทึกเวลาเริ่ม
+           Frontend จะเห็นสถานะนี้ผ่าน polling */
     sqlx::query("UPDATE export_jobs SET status = 'processing', started_at = NOW() WHERE id = $1")
         .bind(export_id)
         .execute(&db)
         .await?;
 
-    /* ดึง resolution */
+    /* 4.2 ดึง resolution จาก export_jobs เพื่อกำหนด ffmpeg settings
+           4k → 3840x2160 60fps CRF18 preset slow
+           1080p → 1920x1080 30fps CRF23 preset veryfast */
     let resolution: String = sqlx::query_scalar(
         "SELECT resolution FROM export_jobs WHERE id = $1"
     )
@@ -110,7 +122,8 @@ async fn run_export(project_id: Uuid, export_id: Uuid) -> Result<String> {
 
     info!(resolution, width, height, fps, "Export settings");
 
-    /* ดึง clips */
+    /* 4.3 ดึง clips ทั้งหมดจาก video track ของ project เรียงตาม position บน timeline
+           ทุก clip มี in_point_ms และ out_point_ms สำหรับ trim */
     let clips = sqlx::query_as::<_, Clip>(
         "SELECT c.id, c.asset_id, c.in_point_ms, c.out_point_ms
          FROM clips c
@@ -126,13 +139,19 @@ async fn run_export(project_id: Uuid, export_id: Uuid) -> Result<String> {
         anyhow::bail!("No clips found for project {}", project_id);
     }
 
+    /* 4.4 สร้าง temp directory ใน /tmp ของ Lambda (มีพื้นที่สูงสุด 10GB)
+           ไฟล์ทั้งหมดจะถูกลบหลัง upload เสร็จ */
     let temp_dir = format!("/tmp/export_{}", export_id);
     std::fs::create_dir_all(&temp_dir)?;
 
     let mut segments = Vec::new();
 
-    /* Trim แต่ละ clip */
+    /* 4.5 วนลูป trim แต่ละ clip ด้วย ffmpeg
+           แต่ละ clip จะถูก encode ใหม่ให้ได้ resolution/fps/codec ที่ตรงกัน
+           เพื่อให้ concat ขั้นต่อไปทำได้โดยไม่มี glitch */
     for (idx, clip) in clips.iter().enumerate() {
+        /* 4.6 ดึง S3 key ของ asset แล้วสร้าง Presigned URL ที่มีอายุ 1 ชั่วโมง
+               ffmpeg จะใช้ URL นี้ download ไฟล์ต้นฉบับโดยตรงจาก S3 */
         let asset_key: String = sqlx::query_scalar(
             "SELECT original_url FROM assets WHERE id = $1"
         )
@@ -148,6 +167,8 @@ async fn run_export(project_id: Uuid, export_id: Uuid) -> Result<String> {
 
         info!(clip_id = %clip.id, idx, "Trimming segment");
 
+        /* 4.7 รัน ffmpeg trim — ตัดเฉพาะช่วง in_point ถึง out_point
+               -ss / -to กำหนดช่วงเวลา, -vf scale ปรับ resolution, fps ปรับ frame rate */
         let status = Command::new("/usr/local/bin/ffmpeg")
             .args([
                 "-y",
@@ -173,6 +194,8 @@ async fn run_export(project_id: Uuid, export_id: Uuid) -> Result<String> {
 
         segments.push(format!("{}/segment_{}.mp4", temp_dir, idx));
 
+        /* 4.8 อัปเดต progress 0-80% ระหว่าง trim
+               Frontend จะเห็นเปอร์เซ็นต์เพิ่มขึ้นทุกครั้งที่ poll */
         let progress = ((idx + 1) as f32 / clips.len() as f32 * 80.0) as i32;
         sqlx::query("UPDATE export_jobs SET progress_percent = $1 WHERE id = $2")
             .bind(progress)
@@ -181,7 +204,8 @@ async fn run_export(project_id: Uuid, export_id: Uuid) -> Result<String> {
             .await?;
     }
 
-    /* Concat */
+    /* 4.9 Concat ทุก segment เข้าด้วยกันด้วย ffmpeg concat demuxer
+           ใช้ -c copy (stream copy) เพื่อไม่ต้อง encode ใหม่ — เร็วมาก */
     info!("Concatenating {} segments", segments.len());
     let concat_list_path = format!("{}/segments.txt", temp_dir);
     let mut concat_file = File::create(&concat_list_path)?;
@@ -208,11 +232,16 @@ async fn run_export(project_id: Uuid, export_id: Uuid) -> Result<String> {
     }
 
     /* Upload */
+    /* 4.10 Upload ไฟล์ final ขึ้น S3
+            key format: exports/{project_id}/{export_id}.mp4
+            อ่านไฟล์เข้า memory ก่อน (ไม่ใช้ streaming) เพื่อหลีกเลี่ยง MinIO chunk limit */
     info!("Uploading to S3");
     let export_key = format!("exports/{}/{}.mp4", project_id, export_id);
     upload_to_s3(&s3, &final_output_path, &export_key, "video/mp4").await?;
 
-    /* Update DB */
+    /* 4.11 อัปเดต DB สถานะ "completed" พร้อม output_url (S3 key)
+            API จะ generate presigned URL จาก key นี้เมื่อ frontend ขอ download
+            progress_percent = 100 → Frontend แสดงปุ่ม Download */
     sqlx::query(
         "UPDATE export_jobs SET status = 'completed', progress_percent = 100,
          output_url = $1, completed_at = NOW() WHERE id = $2"
@@ -222,6 +251,7 @@ async fn run_export(project_id: Uuid, export_id: Uuid) -> Result<String> {
     .execute(&db)
     .await?;
 
+    /* 4.12 ลบ temp files ทั้งหมดใน /tmp เพื่อคืน disk space ให้ Lambda */
     let _ = std::fs::remove_dir_all(&temp_dir);
 
     Ok(export_key)

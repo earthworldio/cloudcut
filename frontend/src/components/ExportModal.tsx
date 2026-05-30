@@ -25,8 +25,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [resolution, setResolution] = useState<"720p" | "1080p" | "4k">("1080p");
 
   const startExport = async () => {
+    /* 1.0 ผู้ใช้กดปุ่ม "Start Export" — เริ่มกระบวนการ export */
     setIsStarting(true);
     try {
+      /* 1.1 ส่ง POST ไปที่ API พร้อม resolution ที่เลือก (720p / 1080p / 4k)
+             ถ้าเลือก 4k → API จะโยนงานไปให้ Lambda บน AWS แทน Worker ปกติ */
       const { data: jobResponse } = await api.post<{ exportId: string; status: string }>(
         `/projects/${projectId}/exports`,
         {
@@ -35,6 +38,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           quality: "standard",
         },
       );
+
+      /* 1.2 API ตอบกลับด้วย exportId → เริ่ม poll สถานะทุก 2 วินาที */
       pollStatus(jobResponse.exportId);
     } catch (err: any) {
       toast.fire({
@@ -48,16 +53,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const pollStatus = async (exportId: string) => {
     try {
-      /* In this simplified implementation, we find the export job in the project data 
-         if the backend provides it. Or we can create a specific endpoint.
-         For now, let's assume we have an endpoint GET /api/projects/:id/exports/:exportId
-      */
+      /* 1.3 ดึงสถานะ export job จาก API ทุก 2 วินาที
+             สถานะที่เป็นไปได้: queued → processing → completed / failed / cancelled */
       const jobRes = await api.get<ExportJob>(
         `/projects/${projectId}/exports/${exportId}`,
       );
       setJob(jobRes.data);
       setIsStarting(false);
 
+      /* 1.4 ถ้ายังไม่เสร็จ (queued หรือ processing) → poll ต่อไปทุก 2 วินาที
+             ถ้า completed → แสดงปุ่ม Download พร้อม output_url จาก S3 */
       if (
         jobRes.data.status === "queued" ||
         jobRes.data.status === "processing"
