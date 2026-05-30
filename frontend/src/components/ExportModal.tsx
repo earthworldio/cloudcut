@@ -25,11 +25,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [resolution, setResolution] = useState<"720p" | "1080p" | "4k">("1080p");
 
   const startExport = async () => {
-    /* 1.0 ผู้ใช้กดปุ่ม "Start Export" — เริ่มกระบวนการ export */
     setIsStarting(true);
     try {
-      /* 1.1 ส่ง POST ไปที่ API พร้อม resolution ที่เลือก (720p / 1080p / 4k)
-             ถ้าเลือก 4k → API จะโยนงานไปให้ Lambda บน AWS แทน Worker ปกติ */
+      /* 1.1 ส่ง POST ไปที่ API พร้อม resolution ที่เลือก (720p / 1080p / 4k) */
       const { data: jobResponse } = await api.post<{ exportId: string; status: string }>(
         `/projects/${projectId}/exports`,
         {
@@ -39,7 +37,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         },
       );
 
-      /* 1.2 API ตอบกลับด้วย exportId → เริ่ม poll สถานะทุก 2 วินาที */
+      /* 1.2 API ตอบกลับ exportId ทันที → เริ่ม poll สถานะทุก 2 วิ */
       pollStatus(jobResponse.exportId);
     } catch (err: any) {
       toast.fire({
@@ -53,22 +51,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const pollStatus = async (exportId: string) => {
     try {
-      /* 1.3 ดึงสถานะ export job จาก API ทุก 2 วินาที
-             สถานะที่เป็นไปได้: queued → processing → completed / failed / cancelled */
+      /* 1.3 GET สถานะ export job ทุก 2 วิ จนกว่าจะไม่ใช่ queued/processing */
       const jobRes = await api.get<ExportJob>(
         `/projects/${projectId}/exports/${exportId}`,
       );
       setJob(jobRes.data);
       setIsStarting(false);
 
-      /* 1.4 ถ้ายังไม่เสร็จ (queued หรือ processing) → poll ต่อไปทุก 2 วินาที
-             ถ้า completed → แสดงปุ่ม Download พร้อม output_url จาก S3 */
       if (
         jobRes.data.status === "queued" ||
         jobRes.data.status === "processing"
       ) {
+        /* 1.4 ยังไม่เสร็จ → schedule poll รอบถัดไปใน 2 วินาที */
         setTimeout(() => pollStatus(exportId), 2000);
       }
+      /* 1.5 completed → React render ปุ่ม Download พร้อม presigned URL จาก S3 */
     } catch (err) {
       console.error("Polling failed", err);
     }

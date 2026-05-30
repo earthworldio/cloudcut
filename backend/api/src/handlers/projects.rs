@@ -550,11 +550,9 @@ pub async fn create_export(
     Path(project_id): Path<Uuid>,
     Json(payload): Json<ExportRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    /* 2.0 ตรวจสอบสิทธิ์ว่า user มีสิทธิ์เข้าถึง project นี้ */
+    /* 2.1 ตรวจสิทธิ์ — user ต้องเป็น member ของ workspace ที่ project นี้อยู่ */
     check_project_access(&pool, project_id, user_id).await?;
 
-    /* 2.1 ดึง plan ของ workspace เพื่อกำหนด concurrent export limit
-           free=2, pro=10, team=30 — ป้องกันการ queue งานมากเกินไป */
     let plan = get_workspace_plan(&pool, project_id).await?;
     let (workspace_id,): (Uuid,) = sqlx::query_as("SELECT workspace_id FROM projects WHERE id = $1")
         .bind(project_id).fetch_one(&pool).await
@@ -567,7 +565,7 @@ pub async fn create_export(
         _ => 2,
     };
 
-    /* 2.2 นับ export jobs ที่กำลังทำงานอยู่ ถ้าเกิน limit → reject ทันที */
+    /* 2.2 เช็ค concurrent limit — นับ job ที่ยัง queued/processing อยู่ */
     let active_exports: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM export_jobs ej
          JOIN projects p ON ej.project_id = p.id
@@ -582,13 +580,12 @@ pub async fn create_export(
         return Err(AppError::Forbidden(format!("Concurrent export limit reached for plan {}", plan)));
     }
 
-    /* 2.3 สร้าง export_jobs record ใน DB ด้วยสถานะ "queued"
-           idempotency_key ใช้ป้องกันการสร้าง job ซ้ำ */
     let export_id = Uuid::now_v7();
     let idempotency_key = format!("export-{}", export_id);
 
     let mut tx = pool.begin().await?;
 
+    /* 2.3 บันทึก export job ลง DB สถานะ "queued" — Frontend เห็นสถานะนี้ทันที */
     sqlx::query(
         "INSERT INTO export_jobs (id, project_id, requested_by, format, resolution, quality, status, progress_percent, idempotency_key)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
@@ -605,12 +602,7 @@ pub async fn create_export(
     .execute(&mut *tx)
     .await?;
 
-    /* 2.4 แยก route ตาม resolution:
-           - "4k"          → ส่งไป AWS Lambda (รองรับ 4K 60fps, ไม่ติด timeout ของ worker)
-           - "1080p"/"720p" → ส่งเข้า Redis Queue → Worker Docker ปกติ */
     if payload.resolution == "4k" {
-        /* 2.5 ดึง Lambda Function URL จาก env var
-               URL นี้เป็น HTTPS endpoint ตรงของ Lambda ไม่ต้องใช้ AWS SDK */
         let lambda_url = std::env::var("LAMBDA_EXPORT_4K_URL")
             .map_err(|_| AppError::Internal(anyhow::Error::msg("LAMBDA_EXPORT_4K_URL not set")))?;
 
@@ -619,9 +611,8 @@ pub async fn create_export(
             "export_id": export_id,
         });
 
-        /* 2.6 invoke Lambda แบบ async (tokio::spawn) เพื่อไม่ให้ API รอ
-               Lambda จะทำงานหลังบ้านและอัปเดต DB เองเมื่อเสร็จ
-               Frontend จะ poll สถานะผ่าน GET /exports/:id/status */
+        /* 2.4 resolution=4k → POST ไป Lambda Function URL แบบ async (ไม่รอผล)
+               API return ทันที, Lambda ทำงานหลังบ้านและอัปเดต DB เมื่อเสร็จ */
         tokio::spawn(async move {
             let client = reqwest::Client::new();
             if let Err(e) = client.post(&lambda_url).json(&event).send().await {
@@ -629,8 +620,7 @@ pub async fn create_export(
             }
         });
     } else {
-        /* 2.7 720p / 1080p → push เข้า Redis queue
-               Worker Docker จะ BRPOP งานออกมาประมวลผลตามลำดับ */
+        /* 2.5 resolution=720p/1080p → push เข้า Redis queue ให้ Worker Docker รับไป */
         let job_payload = JobPayload::RenderExport {
             project_id,
             export_id,
@@ -645,7 +635,7 @@ pub async fn create_export(
             .map_err(|e| AppError::Internal(anyhow::Error::msg(format!("Redis push error: {}", e))))?;
     }
 
-    /* 2.8 Commit transaction — export_jobs record ถูกบันทึกแน่นอนแล้ว */
+    /* 2.6 Commit — export_jobs record ถูก save แน่นอน ก่อน return */
     tx.commit().await?;
 
     Ok((

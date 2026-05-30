@@ -1,102 +1,117 @@
 export const FlowExportPage = () => {
   const steps = [
     {
-      group: "Frontend (ExportModal.tsx)",
+      group: "Frontend",
+      file: "ExportModal.tsx",
       color: "#3b82f6",
       items: [
-        { id: "1.0", title: "ผู้ใช้กดปุ่ม Start Export", desc: "เลือก resolution (720p / 1080p / 4K 60fps) แล้วกดปุ่ม → startExport() ถูกเรียก" },
-        { id: "1.1", title: "POST ไป API", desc: "ส่ง { format: 'mp4', resolution: '4k' } ไปที่ /api/projects/:id/exports" },
-        { id: "1.2", title: "รับ exportId กลับมา", desc: "API ตอบกลับด้วย exportId → เริ่ม pollStatus() ทุก 2 วินาที" },
-        { id: "1.3", title: "Poll สถานะ", desc: "GET /api/projects/:id/exports/:exportId ทุก 2 วิ รอจนสถานะไม่ใช่ queued/processing" },
-        { id: "1.4", title: "แสดงผล", desc: "completed → แสดงปุ่ม Download พร้อม presigned URL จาก S3 / failed → แสดง error" },
+        { id: "1.1", title: "POST /api/projects/:id/exports", desc: "ส่ง { format, resolution } ไปที่ API — ถ้า resolution='4k' API จะโยนงานไป Lambda" },
+        { id: "1.2", title: "รับ exportId กลับมา", desc: "API return ทันที พร้อม exportId → เริ่ม pollStatus() ทุก 2 วิ" },
+        { id: "1.3", title: "GET /exports/:exportId", desc: "ดึงสถานะทุก 2 วิ จนกว่าจะไม่ใช่ queued/processing" },
+        { id: "1.4", title: "ยังไม่เสร็จ → poll รอบถัดไป", desc: "setTimeout 2000ms แล้วเรียก pollStatus() ซ้ำ" },
+        { id: "1.5", title: "completed → แสดงปุ่ม Download", desc: "React render ปุ่ม Download พร้อม presigned URL จาก S3" },
       ]
     },
     {
-      group: "API — projects.rs (create_export)",
+      group: "API — create_export()",
+      file: "backend/api/src/handlers/projects.rs",
       color: "#10b981",
       items: [
-        { id: "2.0", title: "ตรวจสอบสิทธิ์", desc: "check_project_access() ตรวจว่า user มีสิทธิ์เข้าถึง project นี้ผ่าน workspace_members" },
-        { id: "2.1", title: "ดึง Plan + Limit", desc: "ดึง plan ของ workspace (free=2, pro=10, team=30) เพื่อกำหนด concurrent export limit" },
-        { id: "2.2", title: "เช็ค Concurrent Export", desc: "นับ export jobs ที่ status = queued/processing ถ้าเกิน limit → reject 403 ทันที" },
-        { id: "2.3", title: "สร้าง Export Job ใน DB", desc: "INSERT export_jobs ด้วยสถานะ 'queued', progress 0%, พร้อม idempotency_key ป้องกันซ้ำ" },
-        { id: "2.4", title: "แยก Route ตาม Resolution", desc: "resolution == '4k' → Lambda / resolution อื่น → Redis Queue → Worker Docker" },
-        { id: "2.5", title: "อ่าน Lambda Function URL", desc: "อ่าน LAMBDA_EXPORT_4K_URL จาก env var — URL ของ Lambda บน AWS โดยตรง" },
-        { id: "2.6", title: "Invoke Lambda แบบ Async", desc: "tokio::spawn POST ไปหา Lambda Function URL พร้อม project_id + export_id แล้ว return ทันที ไม่รอผล" },
-        { id: "2.7", title: "Redis Queue (non-4K)", desc: "720p/1080p → LPUSH เข้า queue:video_pipeline → Worker Docker รับไปประมวลผล" },
-        { id: "2.8", title: "Commit + Response", desc: "Commit DB transaction → ตอบ { exportId, status: 'queued' } กลับ Frontend" },
+        { id: "2.1", title: "check_project_access()", desc: "ตรวจสิทธิ์ — user ต้องเป็น member ของ workspace ที่ project อยู่" },
+        { id: "2.2", title: "เช็ค concurrent limit", desc: "นับ job ที่ยัง queued/processing — free=2, pro=10, team=30" },
+        { id: "2.3", title: "INSERT export_jobs", desc: "บันทึก job ลง DB สถานะ 'queued' พร้อม idempotency_key ป้องกัน duplicate" },
+        { id: "2.4", title: "resolution='4k' → POST Lambda URL", desc: "tokio::spawn HTTP POST ไปหา Lambda Function URL แบบ async (ไม่รอผล)" },
+        { id: "2.5", title: "resolution อื่น → Redis Queue", desc: "LPUSH เข้า queue:video_pipeline → Worker Docker BRPOP ไปประมวลผล" },
+        { id: "2.6", title: "commit + return exportId", desc: "Commit transaction แล้ว return { exportId, status: 'queued' } ให้ Frontend" },
       ]
     },
     {
-      group: "Lambda Handler (lambda/export-4k/main.rs)",
+      group: "Lambda Handler",
+      file: "lambda/export-4k/src/main.rs → handler()",
       color: "#f59e0b",
       items: [
-        { id: "3.0", title: "รับ Event จาก Function URL", desc: "Lambda ได้รับ HTTP POST — Function URL ส่ง body มาใน field 'body' เป็น JSON string" },
-        { id: "3.1", title: "Parse Event", desc: "รองรับ 2 format: Function URL (body field) และ direct SDK invoke (JSON ตรงๆ)" },
-        { id: "3.2", title: "เรียก run_export()", desc: "ส่ง project_id + export_id เข้า pipeline หลัก ถ้า error → update DB status = failed" },
+        { id: "3.1", title: "Parse body จาก Function URL", desc: "Function URL ห่อ body ใน field 'body' — ดึงออกมา parse เป็น { project_id, export_id }" },
+        { id: "3.2", title: "เรียก run_export()", desc: "ส่งเข้า pipeline หลัก — ถ้า error return status='failed' ไม่ retry" },
       ]
     },
     {
-      group: "Lambda Pipeline — run_export()",
+      group: "Lambda Pipeline",
+      file: "lambda/export-4k/src/main.rs → run_export()",
       color: "#ef4444",
       items: [
-        { id: "4.0", title: "Connect DB + S3", desc: "เชื่อมต่อ Neon PostgreSQL ผ่าน DATABASE_URL และ build S3 client จาก Lambda execution role" },
-        { id: "4.1", title: "Update Status = processing", desc: "UPDATE export_jobs SET status='processing', started_at=NOW() → Frontend เห็นสถานะเปลี่ยน" },
-        { id: "4.2", title: "ดึง Resolution → FFmpeg Settings", desc: "4K: 3840x2160 60fps CRF18 preset slow / 1080p: 1920x1080 30fps CRF23 preset veryfast" },
-        { id: "4.3", title: "ดึง Clips จาก Timeline", desc: "SELECT clips JOIN tracks WHERE type='video' ORDER BY track_position_ms — ได้ลำดับ clip บน timeline" },
-        { id: "4.4", title: "สร้าง Temp Directory", desc: "mkdir /tmp/export_{export_id} — Lambda มี /tmp สูงสุด 10GB สำหรับเก็บไฟล์ระหว่าง process" },
-        { id: "4.5-4.8", title: "Trim แต่ละ Clip ด้วย FFmpeg", desc: "สำหรับทุก clip: สร้าง presigned URL → ffmpeg trim ช่วง in-out → encode 4K 60fps → update progress 0-80%" },
-        { id: "4.9", title: "Concat ทุก Segment", desc: "เขียน segments.txt → ffmpeg concat demuxer ด้วย -c copy (ไม่ encode ใหม่) → final_output.mp4" },
-        { id: "4.10", title: "Upload ขึ้น S3", desc: "อ่านไฟล์เข้า memory → PUT ขึ้น S3 key: exports/{project_id}/{export_id}.mp4" },
-        { id: "4.11", title: "Update Status = completed", desc: "UPDATE export_jobs SET status='completed', progress=100, output_url=key, completed_at=NOW()" },
-        { id: "4.12", title: "Cleanup Temp Files", desc: "rm -rf /tmp/export_{export_id} คืน disk space ให้ Lambda invocation ถัดไป" },
+        { id: "4.1", title: "Connect Neon DB + S3", desc: "เชื่อมต่อ PostgreSQL (Neon) และ build S3 client จาก Lambda execution role" },
+        { id: "4.2", title: "UPDATE status = 'processing'", desc: "บันทึกเวลาเริ่ม + เปลี่ยนสถานะ → Frontend เห็นผ่าน poll รอบถัดไป" },
+        { id: "4.3", title: "ดึง resolution → ffmpeg settings", desc: "4k: 3840×2160 60fps CRF18 preset:slow / 1080p: 1920×1080 30fps CRF23" },
+        { id: "4.4", title: "SELECT clips จาก timeline", desc: "ดึง clips จาก video track เรียงตาม track_position_ms (ลำดับบน timeline)" },
+        { id: "4.5", title: "mkdir /tmp/export_{id}", desc: "สร้าง temp dir ใน /tmp ของ Lambda (มี disk สูงสุด 10GB)" },
+        { id: "4.6", title: "Presigned URL ของ asset", desc: "สร้าง presigned URL จาก S3 key ใน DB อายุ 1 ชั่วโมง — ffmpeg ใช้ download ต้นฉบับ" },
+        { id: "4.7", title: "ffmpeg trim clip", desc: "ตัดตาม in_point-out_point แล้ว encode เป็น 4K 60fps — ทุก segment ต้องมี format เดียวกัน" },
+        { id: "4.8", title: "UPDATE progress 0-80%", desc: "อัปเดต progress หลัง trim แต่ละ clip เสร็จ — Frontend เห็นค่าเพิ่มขึ้นทุกรอบ poll" },
+        { id: "4.9", title: "ffmpeg concat -c copy", desc: "รวมทุก segment ด้วย concat demuxer + stream copy (ไม่ encode ใหม่ เร็วมาก)" },
+        { id: "4.10", title: "Upload S3 → exports/.../id.mp4", desc: "อ่านไฟล์เข้า memory → PUT ขึ้น S3 bucket" },
+        { id: "4.11", title: "UPDATE status = 'completed'", desc: "บันทึก output_url (S3 key) + progress=100 → Frontend แสดงปุ่ม Download" },
+        { id: "4.12", title: "ลบ /tmp/export_{id}", desc: "คืน disk space ให้ Lambda invocation ถัดไป" },
       ]
     },
   ];
 
+  const summary = [
+    "1.1 กดปุ่ม", "→", "2.1 ตรวจสิทธิ์", "→", "2.3 สร้าง Job", "→",
+    "2.4 POST Lambda", "→", "3.1 Parse event", "→", "4.2 processing",
+    "→", "4.7 ffmpeg trim×N", "→", "4.9 concat", "→", "4.10 S3 upload",
+    "→", "4.11 completed", "→", "1.5 Download"
+  ];
+
   return (
-    <div style={{ background: "#0f0f0f", minHeight: "100vh", padding: "40px 24px", fontFamily: "monospace", color: "#e5e5e5" }}>
-      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>4K Export Flow</h1>
-      <p style={{ color: "#6b7280", marginBottom: 48, fontSize: 14 }}>
-        ติดตาม flow ได้ด้วยการ search หมายเลข เช่น <code style={{ background: "#1f1f1f", padding: "2px 6px", borderRadius: 4 }}>/* 2.6</code> ในโค้ด
-      </p>
+    <div style={{ background: "#0a0a0a", minHeight: "100vh", padding: "48px 32px", fontFamily: "ui-monospace, monospace", color: "#e5e5e5", maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ marginBottom: 48 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 8px" }}>4K Export Flow</h1>
+        <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>
+          Search <code style={{ background: "#1c1c1c", padding: "2px 8px", borderRadius: 4, color: "#f59e0b" }}>/* 2.4</code> ในโค้ดเพื่อ jump ไปยัง step นั้นได้เลย
+        </p>
+      </div>
+
+      {/* Summary bar */}
+      <div style={{ background: "#111", border: "1px solid #222", borderRadius: 10, padding: "16px 20px", marginBottom: 48, overflowX: "auto" }}>
+        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Full Flow</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: 12 }}>
+          {summary.map((s, i) => (
+            <span key={i} style={{ color: s === "→" ? "#374151" : "#d1d5db", whiteSpace: "nowrap" }}>{s}</span>
+          ))}
+        </div>
+      </div>
 
       {steps.map((group) => (
-        <div key={group.group} style={{ marginBottom: 48 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-            <div style={{ width: 12, height: 12, borderRadius: "50%", background: group.color }} />
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: group.color, margin: 0 }}>{group.group}</h2>
+        <div key={group.group} style={{ marginBottom: 40 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: group.color }}>{group.group}</span>
+            <span style={{ fontSize: 11, color: "#4b5563" }}>{group.file}</span>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 24, borderLeft: `2px solid ${group.color}33` }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
             {group.items.map((step, i) => (
-              <div key={step.id} style={{ display: "flex", gap: 16, padding: "12px 16px", background: "#1a1a1a", borderRadius: 8, position: "relative" }}>
-                <div style={{ position: "absolute", left: -31, top: "50%", transform: "translateY(-50%)", width: 10, height: 10, borderRadius: "50%", background: group.color }} />
-
-                <div style={{ minWidth: 48, fontSize: 12, color: group.color, fontWeight: 700, paddingTop: 2 }}>
-                  {step.id}
-                </div>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{step.title}</div>
-                  <div style={{ fontSize: 13, color: "#9ca3af", lineHeight: 1.6 }}>{step.desc}</div>
+              <div key={step.id} style={{ display: "grid", gridTemplateColumns: "52px 1fr", gap: 0, position: "relative" }}>
+                {/* left line */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 14 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: group.color, flexShrink: 0 }} />
+                  {i < group.items.length - 1 && (
+                    <div style={{ width: 1, flexGrow: 1, background: `${group.color}30`, marginTop: 4 }} />
+                  )}
                 </div>
 
-                {i < group.items.length - 1 && (
-                  <div style={{ position: "absolute", left: -27, top: "calc(50% + 8px)", width: 2, height: 18, background: `${group.color}33` }} />
-                )}
+                {/* content */}
+                <div style={{ padding: "10px 16px 10px 8px", marginBottom: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3 }}>
+                    <span style={{ fontSize: 11, color: group.color, fontWeight: 700, minWidth: 32 }}>{step.id}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#f3f4f6" }}>{step.title}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#6b7280", paddingLeft: 42, lineHeight: 1.6 }}>{step.desc}</div>
+                </div>
               </div>
             ))}
           </div>
         </div>
       ))}
-
-      <div style={{ background: "#1a1a1a", borderRadius: 12, padding: 24, marginTop: 48 }}>
-        <h3 style={{ margin: "0 0 16px", fontSize: 14, color: "#6b7280" }}>Full Flow Summary</h3>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
-          {["UI กดปุ่ม", "→", "POST /exports", "→", "API สร้าง Job", "→", "invoke Lambda URL", "→", "FFmpeg trim clips", "→", "concat", "→", "upload S3", "→", "DB completed", "→", "Frontend download"].map((s, i) => (
-            <span key={i} style={{ color: s === "→" ? "#4b5563" : "#e5e5e5" }}>{s}</span>
-          ))}
-        </div>
-      </div>
     </div>
   );
 };
